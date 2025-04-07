@@ -1,0 +1,270 @@
+---
+title: "Untitled"
+author: "Ross Cunning"
+date: "2025-04-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+```{r}
+# Custom one-sided z-test for slope
+z_test_slope_less_than <- function(model, null_slope) {
+  coef_summary <- summary(model)$coefficients
+  slope_est <- coef_summary[2, "Estimate"]
+  slope_se <- coef_summary[2, "Std. Error"]
+  z <- (slope_est - null_slope) / slope_se
+  pval <- pnorm(z)  # one-sided test: P(slope < null_slope)
+  return(pval)
+}
+
+# Function to create 2-panel plot
+plot_bleaching_slope_tests <- function(df) {
+  
+  # Model 1: log_post vs log_pre
+  mod1 <- lm(log_post ~ log_pre, data = df)
+  p1 <- z_test_slope_less_than(mod1, 1)
+  
+  plot1 <- ggplot(df, aes(x = log_pre, y = log_post)) +
+    geom_point() +
+    geom_abline(slope = 1, intercept = 0, linetype = 2) +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    coord_fixed() +
+    labs(
+      x = "log(Pre-bleaching Ratio)",
+      y = "log(Post-bleaching Ratio)",
+      title = paste0("Post vs. Pre (slope < 1: p = ", signif(p1, 3), ")")
+    ) +
+    theme_minimal()
+  
+  # Model 2: log_loss vs log_pre
+  mod2 <- lm(log_loss ~ log_pre, data = df)
+  p2 <- z_test_slope_less_than(mod2, 0)
+  
+  plot2 <- ggplot(df, aes(x = log_pre, y = log_loss)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    coord_fixed() +
+    labs(
+      x = "log(Pre-bleaching Ratio)",
+      y = "log(Post / Pre)",
+      title = paste0("Log-loss vs. Pre (slope < 0: p = ", signif(p2, 3), ")")
+    ) +
+    theme_minimal()
+  
+  # Combine with ggpubr
+  ggarrange(plot1, plot2, ncol = 2, align = "hv")
+}
+```
+
+```{r}
+#APPROACH 1 -- simulate pre and post independently. (SHOULD THESE BE INDEPENDENT? THEY AREN'T BIOLOGICALLY....)
+# shows massive negative relationship of log(post/pre) vs. log(pre)
+set.seed(123)
+
+n <- 40
+geo_mean_pre <- 0.109
+log_sd <- 0.627
+mu_pre <- log(geo_mean_pre)
+
+# Step 1: Simulate pre-bleaching ratios
+pre_bleaching <- rlnorm(n, meanlog = mu_pre, sdlog = log_sd)
+log_pre <- log(pre_bleaching)
+hist(log_pre)
+hist(log10(pre_bleaching), breaks = 30)
+hist(pre_bleaching, breaks = 30)
+
+# Step 2: Scenario 1 - Random loss (log-scale shift of mean by log(0.25))
+mu_post <- mu_pre + log(0.25)  # shift down by 75%
+post_bleaching_random <- rlnorm(n, meanlog = mu_post, sdlog = log_sd)
+hist(post_bleaching_random)
+plot(log10(pre_bleaching), log10(post_bleaching_random))
+abline(0, 1)
+abline(mod1)
+
+# Step 3: Scenario 2 - Same random variation as Scenario 1 + systematic loss based on initial values
+
+# Extract the log-scale noise from scenario 1
+log_noise <- log(post_bleaching_random) - mu_post  # mean zero noise
+
+# Add systematic loss component to log values based on initial log ratio
+b <- 0.2  # strength of relationship between initial log and loss
+log_post_bleaching_correlated <- mu_post + log_noise - b * (log_pre - mean(log_pre))
+
+post_bleaching_correlated <- exp(log_post_bleaching_correlated)
+plot(log(pre_bleaching), log(post_bleaching_correlated))
+abline(0, 1)
+
+# Combine into a dataframe
+df <- data.frame(
+  coral_id = 1:n,
+  pre_bleaching = pre_bleaching,
+  post_bleaching_random = post_bleaching_random,
+  post_bleaching_correlated = post_bleaching_correlated
+)
+
+# Optional: visualize
+df_long <- df %>%
+  pivot_longer(cols = starts_with("post_bleaching"),
+               names_to = "scenario",
+               values_to = "post_bleaching") %>%
+  mutate(scenario = factor(scenario,
+                           levels = c("post_bleaching_random", "post_bleaching_correlated"),
+                           labels = c("Random Loss", "Correlated Loss")))
+
+ggplot(df_long, aes(x = pre_bleaching, y = post_bleaching/pre_bleaching)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~scenario)
+
+ggplot(df_long, aes(x = pre_bleaching, y = post_bleaching)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~scenario)
+
+df <- tibble(df)
+mod1 <- lm(log(post_bleaching_random) ~ log(pre_bleaching))
+summary(mod1)
+z_test_slope_less_than(mod1, 1)
+
+mod1 <- lm(log(post_bleaching_correlated) ~ log(pre_bleaching))
+summary(mod1)
+z_test_slope_less_than(mod1, 1)
+```
+
+```{r}
+# APPROACH 2 -- simulate log(post/pre) as normal
+set.seed(123)
+
+# Parameters
+n <- 40
+geo_mean_pre <- 0.109
+log_sd <- 0.627
+
+# Simulate pre-bleaching values (lognormal)
+df <- tibble(coral_id = 1:n,
+             pre_bleaching = rlnorm(n, meanlog = log(geo_mean_pre), sdlog = log_sd_pre),
+             log_pre = log(pre_bleaching))
+
+# Now simulate log(post/pre) ~ Normal(mu, sigma)
+mu_logloss <- log(0.25)  # corresponds to 75% geometric mean loss
+sd_logloss <- 0.5        # amount of variation in log-loss
+
+# Optional: add a systematic relationship between pre and log-loss
+b <- 0.2  # strength of effect
+noise <- rnorm(n, mean = 0, sd = sd_logloss)
+
+correlated_results <- df %>%
+  mutate(log_loss = mu_logloss - b * scale(log_pre)[,1] + noise,  # correlation + noise
+         post_bleaching = pre_bleaching * exp(log_loss),
+         log_post = log(post_bleaching))
+
+random_results <- df %>%
+  mutate(log_loss = mu_logloss - 0 * scale(log_pre)[,1] + noise,  # correlation + noise
+         post_bleaching = pre_bleaching * exp(log_loss),
+         log_post = log(post_bleaching))
+
+plot_bleaching_slope_tests(correlated_results)
+
+plot_bleaching_slope_tests(random_results)
+```
+
+```{r}
+# APPROACH 3 - this might be the same as approach 2
+# Parameters
+n <- 40
+geo_mean_pre <- 0.109
+log_sd <- 0.627
+
+# Simulate pre-bleaching values (lognormal)
+df <- tibble(coral_id = 1:n,
+             pre_bleaching = rlnorm(n, meanlog = log(geo_mean_pre), sdlog = log_sd_pre),
+             log_pre = log(pre_bleaching))
+
+df <- df %>%
+  mutate(noise = rnorm(n, mean = 0, sd = 0.1),
+         post_bleaching = (0.25 + noise) * pre_bleaching)
+
+ggplot(df, aes(x = log(pre_bleaching), y = log(post_bleaching))) +
+  geom_point()
+
+ggplot(df, aes(x = log(pre_bleaching), y = log(post_bleaching/pre_bleaching))) +
+  geom_point()
+
+mod1 <- lm(log(post_bleaching) ~ log(pre_bleaching), data = df)
+z_test_slope_less_than(mod1, 1)
+
+mod2 <- lm(log(post_bleaching/pre_bleaching) ~ log(pre_bleaching), data = df)
+z_test_slope_less_than(mod2, 0)
+```
+
+```{r}
+# Pdam data
+pdam <- read_csv("Pdam_dataset.csv") %>%
+  janitor::clean_names() %>%
+  filter(time %in% c("feb", "jun")) %>%
+  select(time, colony, sym, total) %>%
+  pivot_wider(names_from = time, values_from = total)
+
+ggplot(pdam, aes(x = log10(feb), y = log10(jun))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F)
+
+ggplot(pdam, aes(x = log10(feb), y = log10(jun/feb), shape = sym, color = sym)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+
+
+mod1 <- lm(log(jun/feb) ~ log(feb), data = pdam)
+summary(mod1)
+anova(mod1)
+z_test_slope_less_than(mod1, 0)
+
+mod2 <- lm(log(jun) ~ log(feb), data = pdam)
+summary(mod2)
+z_test_slope_less_than(mod2, 1)
+```
+
+```{r}
+# Cornwell data
+df <- read_tsv("elife-64790-supp3-v2.csv")
+df
+
+ggplot(df, aes(x = log10(Mean_Control_Proportion), y = log10(Retention))) + geom_point()
+
+
+ggplot(df, aes(x = log10(Mean_Control_Proportion), y = log10(Mean_Heated_Proportion/Mean_Control_Proportion))) + geom_point()
+
+ggplot(df, aes(x = log10(Mean_Control_Proportion), y = log10(Mean_Heated_Proportion))) + geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  geom_abline(slope = 0.59030, intercept = -0.74146)
+
+mod1 <- lm(log10(Mean_Heated_Proportion) ~ log10(Mean_Control_Proportion), 
+           data = filter(df, Mean_Heated_Proportion > 0))
+summary(mod1)
+z_test_slope_less_than(mod1, 1)
+
+mod2 <- lm(log10(Mean_Heated_Proportion/Mean_Control_Proportion) ~ log10(Mean_Control_Proportion), 
+           data = filter(df, Mean_Heated_Proportion > 0))
+summary(mod2)
+z_test_slope_less_than(mod2, 0)
+
+hist(log(df$Mean_Control_Proportion))
+hist(df$Mean_Control_Proportion)
+hist(log(df$Mean_Heated_Proportion))
+hist(df$Mean_Heated_Proportion)
+
+# When these are log transformed the pvalues for mod1 slope < 1 and mod2 slope <0 are exactly the same. but for non-log transformed, they are not...
+```
+
