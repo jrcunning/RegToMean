@@ -1,0 +1,22 @@
+---
+title: "Untitled4"
+author: "R. Cunning"
+date: "2025-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+pre <- rnorm(100, mean = -1, sd = 0.3)
+hist(pre)
+hist(10^pre, breaks = 30)
+post <- rnorm(100, mean = -2, sd = 0.3)
+hist(10^post, breaks = 30)
+remain <- log10(10^post/10^pre)
+plot(pre, post)
+plot(pre, remain)
+```
+
