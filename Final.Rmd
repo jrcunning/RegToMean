@@ -284,7 +284,6 @@ pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
          log_final_raw = log(augtotal),
          log_change = log_final_raw - log_init_raw)
-MVN::mvn(select(pdam, log_init, log_final))
 
 # ggplot(pdam, aes(x = log_init_raw, y = log_change, shape = sym, color = sym)) +
 #   geom_point() +
@@ -327,11 +326,12 @@ p4.2
 
 ### Does the Kelly and Price method change this relationship?
 ```{r s3.2}
+# Test for bivariate normality
+MVN::mvn(select(pdam, log_init, log_final))
+
 # Apply Kelly and Price method to get adjusted change
 pdam <- pdam %>%
   mutate(log_change_adj = rttm.adj(log_init, log_final)[, 3])
-
-
 
 # Model adjusted change vs. initial values
 mod4.3 <- lm(log_change_adj ~ log_init, data = pdam)
@@ -346,10 +346,10 @@ p4.3 <- ggplot(pdam, aes(x = log_init, y = log_change_adj)) +
 p4.3
 
 # back-transform adjusted data?
-pdam <- pdam %>%
-  mutate(back_change = 1 - exp(log_change_adj),
-         back_init = exp(log_init))
-ggplot(pdam, aes(x = back_init, y = back_change)) + geom_point()
+# pdam <- pdam %>%
+#   mutate(back_change = exp(log_change_adj),
+#          back_init = exp(log_init))
+# ggplot(pdam, aes(x = back_init, y = back_change)) + geom_point()
 ```
 
 # Real data no log?
@@ -359,7 +359,7 @@ pdam <- pdam %>%
   mutate(init = exp(log_init),
          final = exp(log_final),
          change = final - init)
-MVN::mvn(select(pdam, init, final))
+MVN::mvn(select(pdam, init, final))     # Does not meet bivariate normal assumption
   
 # Plot
 ggplot(pdam, aes(x = init, y = change)) + geom_point()
@@ -375,7 +375,46 @@ summary(lm(change_adj~init, data = pdam))
 ```
 
 # Real data Million Acer growth
-# log
+```{r}
+mill <- tibble(subMil1) %>%
+  filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
+  filter(InitialSize > 2) %>%     # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
+  mutate(init = InitialSize,
+         final = size,
+         change = final - init)
+MVN::mvn(data = select(mill, init, final))     # NOT multivariate normal, violates Kelly and Price assumption...
+
+# Change vs. initial
+mod5.2 <- lm(change ~ init, data = mill)
+res5.2 <- slope_test(mod5.2, 0, "greater")
+p5.2 <- ggplot(mill, aes(x = init, y = change)) +
+  geom_point(alpha = 0.25) +
+  res5.2$line +
+  res5.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial")
+
+p5.2
+
+# Adjusted change
+mill <- mill %>%
+  mutate(change_adj = rttm.adj(init, final)[, 3])
+
+mod5.3 <- lm(change_adj ~ init, data = mill)
+res5.3 <- slope_test(mod5.3, 0, "greater")
+p5.3 <- ggplot(mill, aes(x = init, y = change_adj)) +
+  geom_point(alpha = 0.25) +
+  res5.3$line +
+  res5.3$annotation +
+  theme_minimal() +
+  labs(title = "Adjusted Change vs. initial")
+
+p5.3
+```
+
+This reproduces Carly's analysis --- but problem of lognormal?
+
+# log-transform size
 ```{r}
 mill <- tibble(subMil1) %>%
   filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
@@ -411,43 +450,13 @@ p5.3 <- ggplot(mill, aes(x = log_init, y = log_change_adj)) +
   labs(title = "Adjusted Change vs. initial")
 
 p5.3
-```
 
-# nonlog
-```{r}
-mill <- tibble(subMil1) %>%
-  filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
-  filter(InitialSize > 2) %>%     # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
-  mutate(init = InitialSize,
-         final = size,
-         change = final - init)
-MVN::mvn(data = select(mill, init, final))     # NOT multivariate normal, violates Kelly and Price assumption
-
-# Change vs. initial
-mod5.2 <- lm(change ~ init, data = mill)
-res5.2 <- slope_test(mod5.2, 0, "greater")
-p5.2 <- ggplot(mill, aes(x = init, y = change)) +
-  geom_point(alpha = 0.25) +
-  res5.2$line +
-  res5.2$annotation +
-  theme_minimal() +
-  labs(title = "Change vs. initial")
-
-p5.2
-
-# Adjusted change
+# backtransform adjusted sizes
 mill <- mill %>%
-  mutate(change_adj = rttm.adj(init, final)[, 3])
-
-mod5.3 <- lm(change_adj ~ init, data = mill)
-res5.3 <- slope_test(mod5.3, 0, "greater")
-p5.3 <- ggplot(mill, aes(x = init, y = change_adj)) +
-  geom_point(alpha = 0.25) +
-  res5.3$line +
-  res5.3$annotation +
-  theme_minimal() +
-  labs(title = "Adjusted Change vs. initial")
-
-p5.3
+  mutate(back_change_adj = exp(log_change_adj))
+ggplot(mill, aes(x = InitialSize, y = back_change_adj)) + geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
 ```
+
+
 
