@@ -675,7 +675,7 @@ cor(subStat1$InitialSize,subStat1$growthRate.rttm.adj, method='pearson') #no rel
 
 
 ########### Increasing growth rate
-
+subInc1
 incAdj<-rttm.adj(subInc1$InitialSize,subInc1$size)
 
 subInc1$growthRate.rttm.adj<-incAdj$adj.growth
@@ -687,7 +687,7 @@ subInc1$stdGR.rttm.adj<-incAdjstdGR$adj.growth
 
 IncGrowthVSsizeADJ<-ggplot(subInc1, aes(x=InitialSize, y=growthRate.rttm.adj)) + geom_point(alpha=0.3) +geom_smooth(method='lm')+stat_cor(method='pearson')+theme_bw() +ylab(NULL) +xlab("Initial Size")
 cor(subInc1$InitialSize, subInc1$growthRate.rttm.adj,method='pearson') #positive correlation recovered! although not strong
-
+cor(subInc1$InitialSize, subInc1$growthRate)
 ########### Decreasing growth rate
 
 decAdj<-rttm.adj(subDec1$InitialSize,subDec1$size)

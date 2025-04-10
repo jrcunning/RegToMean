@@ -1,0 +1,453 @@
+---
+title: "Example"
+author: "Ross Cunning"
+date: "2025-04-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r libraries}
+# Load libraries
+library(tidyverse)
+library(ggpubr)
+```
+
+```{r functions}
+# Define helper functions
+
+# Function to test if slopes are significantly different from null slope
+slope_test <- function(model, null_slope = 0, alternative = c("less", "greater", "two.sided")) {
+  alternative <- match.arg(alternative)
+
+  # Extract slope estimate and SE
+  coefs <- summary(model)$coefficients
+  slope_est <- coefs[2, "Estimate"]
+  slope_se  <- coefs[2, "Std. Error"]
+  df_resid  <- model$df.residual
+
+  # Compute t-statistic
+  t_stat <- (slope_est - null_slope) / slope_se
+
+  # Compute p-value
+  p_val <- switch(alternative,
+                  less = pt(t_stat, df = df_resid),
+                  greater = 1 - pt(t_stat, df = df_resid),
+                  two.sided = 2 * pt(-abs(t_stat), df = df_resid))
+
+  # Map alternative to null hypothesis symbol
+  null_symbol <- switch(alternative,
+                        less = "≥",
+                        greater = "≤",
+                        two.sided = "=")
+
+  # Get predictor and response variable names
+  terms <- all.vars(formula(model))
+  xvar <- terms[2]
+  yvar <- terms[1]
+  data <- model$model
+
+  # Create ggplot layers
+  line_layer <- geom_smooth(method = "lm", se = FALSE, color = "blue")
+  text_layer <- annotate("text", color = "blue",
+                         x = min(data[[xvar]], na.rm = TRUE),
+                         y = max(data[[yvar]], na.rm = TRUE),
+                         label = paste0("Slope = ", round(slope_est, 3),
+                                        "\nP (H0: slope ", null_symbol, " ", null_slope, ") = ",
+                                        signif(p_val, 3)),
+                         hjust = 0, vjust = 1)
+
+  list(line = line_layer, annotation = text_layer)
+}
+
+
+
+# Function to correct for spurious slopes, from Kelly and Price 2005
+rttm.adj <- function(m1, m2){
+  raw.growth<-m2-m1
+  vart<-var.test(m1,m2,paired = T) ## variances equal? 
+  vpv<-vart$p.value # var.test p value
+  m1m2cor<-cor.test(m1, m2) # test correlation between m1 and m2 
+  rho<-m1m2cor$estimate # correlation coefficient between m1 and m2 
+  m1sd<-sd(m1) # m1 sd
+  m2sd<-sd(m2) # m2 sd
+  m1v<-var(m1) # m1 var
+  m2v<-var(m2) # m2 var
+  m1m<-mean(m1) # m1 mean
+  m2m<-mean(m2) # m2 mean
+  pm<-mean(raw.growth)
+  rho2<-(2*rho*m1sd*m2sd)/(m1v+m2v) # adjusted correlation coefficient used if variances are equal
+  rhof<-ifelse(vpv <= 0.05, rho, rho2) # which rho is used for dstar calculation is based on variance comparison
+  dstar<-(rhof*(m1-m1m)-(m2-m2m))*-1 # adjustment values. Multiply by -1 to flip sign because Kelly and Price based on plasticity as m1-m2, not m2-m1 as in most thermal tolerance estimates
+  adj.growth <- pm+dstar # corrected plasticity. 
+  out<-as.data.frame(cbind(raw.growth, dstar, adj.growth)) 
+  return(out)
+}
+```
+
+# Set parameters for simulations
+```{r}
+# Get mean and standard deviations from real data
+pdam0 <- read_csv("PdamRbleaching.csv")
+pdam_summ <- pdam0 %>% 
+  group_by(sym) %>%
+  summarise(across(c(juntotal, augtotal), 
+                   list(mean = ~mean(log(.)), sd = ~sd(log(.)))))
+
+# Get mean initial S/H in each group corals (jun)
+pdam.mean.init <- mean(pdam_summ$juntotal_mean)
+# Get mean final S/H in each group of corals (aug)
+pdam.mean.final <- mean(pdam_summ$augtotal_mean)
+
+# Get average SD of S/H ratio in each group of corals (symbiont / timepoint)
+pdam.sd <- mean(c(pdam_summ$juntotal_sd, pdam_summ$augtotal_sd))
+
+# Get mean and SD of log changes in S/H ratio across all corals
+pdam.mean.logchange <- mean(log(pdam0$augtotal/pdam0$juntotal))
+pdam.sd.logchange <- sd(log(pdam0$augtotal/pdam0$juntotal))
+  
+
+# Set number of individuals for simulations
+n <- 10000
+```
+
+# Scenario 1: Relative change is unrelated to initial value; true values known (no measurement error)
+```{r s1}
+# Goal: Confirm that if log_change is independent of log_initial, regression shows no spurious slope
+# assumes log percent of symbionts lost is random normal
+
+set.seed(1)
+df1 <- tibble(
+  log_init_true = rnorm(n, mean = pdam.mean.init, sd = pdam.sd),    # Initial values (log)
+  log_change_true = log(0.25) + rnorm(n, mean = 0, sd = 0.3),       # Independent log change, 75% [log(final/initial)] + noise
+  log_final_true = log_init_true + log_change_true                  # Final = initial + change
+)
+
+# Final vs. initial, true values
+# Expect: slope ≈ 1
+mod1.1 <- lm(log_final_true ~ log_init_true, data = df1)
+res1.1 <- slope_test(mod1.1, 1, "less")
+p1.1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
+  geom_point(alpha = 0.25) +
+  res1.1$line +
+  res1.1$annotation +
+  theme_minimal() +
+  labs(title = "Final vs. initial (true values)")
+
+# Change vs. initial, true values
+# Expect: slope ≈ 0
+mod1.2 <- lm(log_change_true ~ log_init_true, data = df1)
+res1.2 <- slope_test(mod1.2, 0, "less")
+p1.2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
+  geom_point(alpha = 0.25) +
+  res1.2$line +
+  res1.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial (no relationship; true values)")
+
+p1.2
+```
+
+Confirms that there is no spurious relationship in change vs. initial values
+
+
+# Scenario 2: Relative change is unrelated to initial value; values are measured with error
+```{r s2.1}
+set.seed(1)
+df2 <- df1 %>%
+  mutate(log_init_obs = log_init_true + rnorm(n, mean = 0, sd = 0.3),   # Add random measurement error to initial values
+         log_final_obs = log_final_true + rnorm(n, mean = 0, sd = 0.3), # Add random measurement error to final values
+         log_change_obs = log_final_obs - log_init_obs)                 # Observed change
+
+# Final vs. Initial, observed values with measurement error
+# Expect: slope ≈ 1
+mod2.1 <- lm(log_final_obs ~ log_init_obs, data = df2)
+res2.1 <- slope_test(mod2.1, 1, "less")
+p2.1 <- ggplot(df2, aes(x = log_init_obs, y = log_final_obs)) +
+  geom_point(alpha = 0.25) +
+  res2.1$line +
+  res2.1$annotation +
+  theme_minimal() +
+  labs(title = "Final vs. initial (no relationship; with measurement error)")
+
+# Change vs. initial, observed values with measurement error
+# Expect: slope ≈ 0
+mod2.2 <- lm(log_change_obs ~ log_init_obs, data = df2)
+res2.2 <- slope_test(mod2.2, 0, "less")
+p2.2 <- ggplot(df2, aes(x = log_init_obs, y = log_change_obs)) +
+  geom_point(alpha = 0.25) +
+  res2.2$line +
+  res2.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial (no relationship; with measurement error)")
+
+p2.2
+```
+
+Shows measurement error in initial values leads to mathematical coupling and spurious relationship
+
+### Does the Kelly and Price method recover correct relationship (slope = 0)?
+```{r s2.2}
+# Apply Kelly and Price method to get adjusted change
+df2 <- df2 %>%
+  mutate(log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
+
+# Model adjusted change vs. initial values
+mod2.3 <- lm(log_change_obs_adj ~ log_init_obs, data = df2)
+res2.3 <- slope_test(mod2.3, 0, "less")
+p2.3 <- ggplot(df2, aes(x = log_init_obs, y = log_change_obs_adj)) +
+  geom_point(alpha = 0.25) +
+  res2.3$line +
+  res2.3$annotation +
+  theme_minimal() +
+  labs(title = "K-P adjusted change vs. initial (no relationship; with measurement error)")
+
+p2.3
+```
+
+Yes, Kelly and Price removes the spurious relationship caused by mathematical coupling. It is also able to do this when the measurement error is more extreme (tested with sd = 1).
+
+
+# Scenario 3: True negative relationship between change and initial values
+```{r 3.1}
+# Goal: Simulate a case where more symbionts causes greater loss (true relationship)
+
+# Define strength of initial value effect on logchange
+# e.g., -0.2 means for every 1 unit increase in initial, 0.2 unit decrease in logchange
+b <- -0.5
+
+# Define intercept to target 75% loss at mean initial value
+intercept <- log(0.25) - b * mean(df1$log_init_true)
+
+set.seed(6)
+# Simulate log changes as an intercept + effect of initial value + noise
+df3 <- df1 %>%
+  mutate(log_change_true = intercept + b * log_init_true + rnorm(n, mean = 0, sd = 0.3),
+         log_final_true = log_init_true + log_change_true)
+
+cor(df3$log_init_true, df3$log_change_true)
+
+# Final vs. initial, true values
+# Expected: slope = 0.8
+mod3.1 <- lm(log_final_true ~ log_init_true, data = df3)
+res3.1 <- slope_test(mod3.1, 1, "less")
+p3.1 <- ggplot(df3, aes(x = log_init_true, y = log_final_true)) +
+  geom_point(alpha = 0.25) +
+  res3.1$line +
+  res3.1$annotation +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Final vs. initial (true relationship; true values)")
+
+# Change vs. initial, true values
+# Expected: slope = -0.2
+mod3.2 <- lm(log_change_true ~ log_init_true, data = df3)
+res3.2 <- slope_test(mod3.2, 0, "less")
+p3.2 <- ggplot(df3, aes(x = log_init_true, y = log_change_true)) +
+  geom_point(alpha = 0.25) +
+  res3.2$line +
+  res3.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial (true relationship; true values)")
+
+p3.2
+```
+
+### Does the Kelly and Price method change this relationship?
+```{r s3.2}
+# Apply Kelly and Price method to get adjusted change
+df3 <- df3 %>%
+  mutate(log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3])
+
+# Model adjusted change vs. initial values
+mod3.3 <- lm(log_change_true_adj ~ log_init_true, data = df3)
+res3.3 <- slope_test(mod3.3, 0, "less")
+p3.3 <- ggplot(df3, aes(x = log_init_true, y = log_change_true_adj)) +
+  geom_point(alpha = 0.25) +
+  res3.3$line +
+  res3.3$annotation +
+  theme_minimal() +
+  labs(title = "K-P adjusted change vs. initial (true relationship; true values)")
+
+p3.3
+```
+
+Need to test this more, but it seems to reduce the relationship a lot, and all the way to zero for lower values of b. Potentially there's a threshold b effect size wheren the adjustment still produces a negative but diminished relationship
+
+Does the measurement error part come into effect here???
+
+# Scenario 4: Real data
+```{r s4}
+pdam <- pdam0 %>%
+  mutate(log_init_raw = log(juntotal),
+         log_final_raw = log(augtotal),
+         log_change = log_final_raw - log_init_raw)
+MVN::mvn(select(pdam, log_init, log_final))
+
+# ggplot(pdam, aes(x = log_init_raw, y = log_change, shape = sym, color = sym)) +
+#   geom_point() +
+#   geom_smooth(method = "lm", se = FALSE) +
+#   theme_minimal()
+
+# Remove symbiont effect
+# Calculate grand mean
+grand_mean_init <- mean(pdam$log_init_raw)
+grand_mean_final <- mean(pdam$log_final_raw)
+# Add sym-group residuals to grand mean
+pdam <- pdam %>%
+  group_by(sym) %>%
+  mutate(group_resid_init = log_init_raw - mean(log_init_raw),
+         group_resid_final = log_final_raw - mean(log_final_raw)) %>%
+  ungroup() %>%
+  mutate(log_init = grand_mean_init + group_resid_init,
+         log_final = grand_mean_final + group_resid_final) %>%
+  select(colony, sym, log_init_raw, log_final_raw, log_init, log_final) %>%
+  mutate(log_change = log_final - log_init)
+
+# ggplot(pdam, aes(x = log_init, y = log_change, shape = sym, color = sym)) +
+#   geom_point() +
+#   geom_smooth(method = "lm", se = FALSE) +
+#   theme_minimal()
+
+# Change vs. initial, real data
+# Expected: slope = -0.2
+mod4.2 <- lm(log_change ~ log_init, data = pdam)
+res4.2 <- slope_test(mod4.2, 0, "less")
+p4.2 <- ggplot(pdam, aes(x = log_init, y = log_change)) +
+  geom_point(alpha = 0.25) +
+  res4.2$line +
+  res4.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial (real data)")
+
+p4.2
+```
+
+### Does the Kelly and Price method change this relationship?
+```{r s3.2}
+# Apply Kelly and Price method to get adjusted change
+pdam <- pdam %>%
+  mutate(log_change_adj = rttm.adj(log_init, log_final)[, 3])
+
+
+
+# Model adjusted change vs. initial values
+mod4.3 <- lm(log_change_adj ~ log_init, data = pdam)
+res4.3 <- slope_test(mod4.3, 0, "less")
+p4.3 <- ggplot(pdam, aes(x = log_init, y = log_change_adj)) +
+  geom_point(alpha = 0.25) +
+  res4.3$line +
+  res4.3$annotation +
+  theme_minimal() +
+  labs(title = "K-P adjusted change vs. initial (real data)")
+
+p4.3
+
+# back-transform adjusted data?
+pdam <- pdam %>%
+  mutate(back_change = 1 - exp(log_change_adj),
+         back_init = exp(log_init))
+ggplot(pdam, aes(x = back_init, y = back_change)) + geom_point()
+```
+
+# Real data no log?
+```{r}
+# Try on S/H ratios (non-logged)
+pdam <- pdam %>%
+  mutate(init = exp(log_init),
+         final = exp(log_final),
+         change = final - init)
+MVN::mvn(select(pdam, init, final))
+  
+# Plot
+ggplot(pdam, aes(x = init, y = change)) + geom_point()
+summary(lm(change~init, data = pdam))
+
+# Adjustment
+pdam <- pdam %>%
+  mutate(change_adj = rttm.adj(init, final)[, 3])
+
+# Replot
+ggplot(pdam, aes(x = init, y = change_adj)) + geom_point()
+summary(lm(change_adj~init, data = pdam))
+```
+
+# Real data Million Acer growth
+# log
+```{r}
+mill <- tibble(subMil1) %>%
+  filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
+  filter(InitialSize > 2) %>%     # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
+  mutate(log_init = log(InitialSize),
+         log_final = log(size),
+         log_change = log_final - log_init) %>%
+  filter(log_change > -1 & log_change < 2)
+
+# Change vs. initial
+mod5.2 <- lm(log_change ~ log_init, data = mill)
+res5.2 <- slope_test(mod5.2, 0, "less")
+p5.2 <- ggplot(mill, aes(x = log_init, y = log_change)) +
+  geom_point(alpha = 0.25) +
+  res5.2$line +
+  res5.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial")
+
+p5.2
+
+# Adjusted change
+mill <- mill %>%
+  mutate(log_change_adj = rttm.adj(log_init, log_final)[, 3])
+
+mod5.3 <- lm(log_change_adj ~ log_init, data = mill)
+res5.3 <- slope_test(mod5.3, 0, "less")
+p5.3 <- ggplot(mill, aes(x = log_init, y = log_change_adj)) +
+  geom_point(alpha = 0.25) +
+  res5.3$line +
+  res5.3$annotation +
+  theme_minimal() +
+  labs(title = "Adjusted Change vs. initial")
+
+p5.3
+```
+
+# nonlog
+```{r}
+mill <- tibble(subMil1) %>%
+  filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
+  filter(InitialSize > 2) %>%     # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
+  mutate(init = InitialSize,
+         final = size,
+         change = final - init)
+MVN::mvn(data = select(mill, init, final))     # NOT multivariate normal, violates Kelly and Price assumption
+
+# Change vs. initial
+mod5.2 <- lm(change ~ init, data = mill)
+res5.2 <- slope_test(mod5.2, 0, "greater")
+p5.2 <- ggplot(mill, aes(x = init, y = change)) +
+  geom_point(alpha = 0.25) +
+  res5.2$line +
+  res5.2$annotation +
+  theme_minimal() +
+  labs(title = "Change vs. initial")
+
+p5.2
+
+# Adjusted change
+mill <- mill %>%
+  mutate(change_adj = rttm.adj(init, final)[, 3])
+
+mod5.3 <- lm(change_adj ~ init, data = mill)
+res5.3 <- slope_test(mod5.3, 0, "greater")
+p5.3 <- ggplot(mill, aes(x = init, y = change_adj)) +
+  geom_point(alpha = 0.25) +
+  res5.3$line +
+  res5.3$annotation +
+  theme_minimal() +
+  labs(title = "Adjusted Change vs. initial")
+
+p5.3
+```
+
