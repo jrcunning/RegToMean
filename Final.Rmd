@@ -107,10 +107,16 @@ pdam.sd <- mean(c(pdam_summ$juntotal_sd, pdam_summ$augtotal_sd))
 # Get mean and SD of log changes in S/H ratio across all corals
 pdam.mean.logchange <- mean(log(pdam0$augtotal/pdam0$juntotal))
 pdam.sd.logchange <- sd(log(pdam0$augtotal/pdam0$juntotal))
+
+pdam0 %>% 
+  mutate(logchange = log(augtotal/juntotal)) %>%
+  group_by(sym) %>%
+  summarise(sd = sd(logchange),
+            sdresid = sd(resid(lm(logchange~juntotal))))
   
 
 # Set number of individuals for simulations
-n <- 10000
+n <- 1000
 ```
 
 # Scenario 1: Relative change is unrelated to initial value; true values known (no measurement error)
@@ -216,7 +222,7 @@ Yes, Kelly and Price removes the spurious relationship caused by mathematical co
 
 # Define strength of initial value effect on logchange
 # e.g., -0.2 means for every 1 unit increase in initial, 0.2 unit decrease in logchange
-b <- -0.5
+b <- -0.2
 
 # Define intercept to target 75% loss at mean initial value
 intercept <- log(0.25) - b * mean(df1$log_init_true)
@@ -226,8 +232,6 @@ set.seed(6)
 df3 <- df1 %>%
   mutate(log_change_true = intercept + b * log_init_true + rnorm(n, mean = 0, sd = 0.3),
          log_final_true = log_init_true + log_change_true)
-
-cor(df3$log_init_true, df3$log_change_true)
 
 # Final vs. initial, true values
 # Expected: slope = 0.8
@@ -278,6 +282,8 @@ Need to test this more, but it seems to reduce the relationship a lot, and all t
 
 Does the measurement error part come into effect here???
 
+IT HAS TO DO WITH THE SD OF THE NOISE IN LOG_CHANGE_TRUE -- COMPARE 0.3 (too much) TO 0.2 (not too much)
+
 # Scenario 4: Real data
 ```{r s4}
 pdam <- pdam0 %>%
@@ -309,6 +315,12 @@ pdam <- pdam %>%
 #   geom_point() +
 #   geom_smooth(method = "lm", se = FALSE) +
 #   theme_minimal()
+
+# Check normality
+shapiro.test(pdam$log_init)
+shapiro.test(pdam$log_final)
+shapiro.test(pdam$log_change)
+# initial, final, and changes are all normally distributed
 
 # Change vs. initial, real data
 # Expected: slope = -0.2
@@ -459,4 +471,36 @@ ggplot(mill, aes(x = InitialSize, y = back_change_adj)) + geom_point() +
 ```
 
 
+# Simulate initial and final values independently
+```{r s6}
+set.seed(1)
+df6 <- tibble(
+  log_init = rnorm(n, mean = pdam.mean.init, sd = pdam.sd),    # Initial values (log)
+  log_final = log(0.25) + rnorm(n, mean = pdam.mean.init, sd = pdam.sd),  # Final values
+  log_change = log_final - log_init
+) 
+ggplot(df6, aes(x = log_init, y = log_change)) + geom_point()
+
+# When initial and change are related (change = final - init), then there is a relationship
+df7 <- tibble(
+  init = rnorm(n, mean = 1, sd = 0.2),
+  final = rnorm(n, mean = 0.25, sd = 0.2),
+  change = final - init
+)
+
+ggplot(df7, aes(x = init, y = final)) + geom_point()
+summary(lm(change~init, data = df7))
+summary(lm(final~init, data = df7))
+
+
+# When initial and change are simulated independently, no relationship
+df8 <- tibble(
+  init = rnorm(n, mean = 1, sd = 0.2),
+  change = rnorm(n, mean = -0.75, sd = 2),
+  final = init + change
+)
+
+ggplot(df8, aes(x = init, y = change)) + geom_point()
+
+```
 
