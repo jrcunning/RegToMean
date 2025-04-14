@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 # Load libraries
 library(tidyverse)
 library(ggpubr)
+library(broom)
 ```
 
 ```{r functions}
@@ -119,59 +120,393 @@ pdam0 %>%
 n <- 1000
 ```
 
-# Scenario 1: Relative change is unrelated to initial value; true values known (no measurement error)
-```{r s1}
-# Goal: Confirm that if log_change is independent of log_initial, regression shows no spurious slope
-# assumes log percent of symbionts lost is random normal
+# Population variance among individuals (σ²_among), individual variance, measurement variance
 
+Three sources of variance
++ Variance among individuals in the true value (population variance; *v_pop*)
++ Variance in within-individual changes over time (individual-level variance; *v_ind*)
++ Variance due to noice or imprecision in measurement (error variance; *v_err*))
+
+# Scenario 1
+
+### No relationship between change and initial
+### v_pop == v_ind == v_err
+
+```{r s1}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 1
+
+# Simulate data
 set.seed(1)
 df1 <- tibble(
-  log_init_true = rnorm(n, mean = pdam.mean.init, sd = pdam.sd),    # Initial values (log)
-  log_change_true = log(0.25) + rnorm(n, mean = 0, sd = 0.3),       # Independent log change, 75% [log(final/initial)] + noise
-  log_final_true = log_init_true + log_change_true                  # Final = initial + change
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df1 <- df1 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
-
-# Final vs. initial, true values
-# Expect: slope ≈ 1
-mod1.1 <- lm(log_final_true ~ log_init_true, data = df1)
-res1.1 <- slope_test(mod1.1, 1, "less")
-p1.1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
+  
+# Plot
+p1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
   geom_point(alpha = 0.25) +
-  res1.1$line +
-  res1.1$annotation +
-  theme_minimal() +
-  labs(title = "Final vs. initial (true values)")
-
-# Change vs. initial, true values
-# Expect: slope ≈ 0
-mod1.2 <- lm(log_change_true ~ log_init_true, data = df1)
-res1.2 <- slope_test(mod1.2, 0, "less")
-p1.2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  stat_cor() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlim(-4, 4) + ylim(-5, 5)
+p2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
   geom_point(alpha = 0.25) +
-  res1.2$line +
-  res1.2$annotation +
-  theme_minimal() +
-  labs(title = "Change vs. initial (no relationship; true values)")
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+  stat_cor() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlim(-4, 4) + ylim(-3, 3)
+p3 <- p2 + aes(x = log_init_true, y = log_change_true_adj)
+p4 <- p1 + aes(x = log_init_obs, y = log_final_obs)
+p5 <- p2 + aes(x = log_init_obs, y = log_change_obs)
+p6 <- p2 + aes(x = log_init_obs, y = log_change_obs_adj)
 
-p1.2
+plots1 <- list(p1, p2, p3, p4, p5, p6)
+
+plots1panel <- ggpubr::ggarrange(plotlist = plots1, nrow = 2, ncol = 3, labels = "AUTO")
+
+plots1panel
 ```
 
-Confirms that there is no spurious relationship in change vs. initial values
++ **A** confirms positive (but imperfect) correlation between true initial and final values (biologically realistic)
++ **B** confirms no relationship between true change and true initial (because simulated independently)
++ **C** confirms Kelly and Price correction on true values yields false positive correlation between change and initial (because initial and final imperfectly correlated due to individual variation)
++ **D** confirms positive (but more imperfect, compare to **A**) correlation between initial and final values observed with measurement error
++ **E** confirms spurious negative relationship between observed change and initial is due to measurement error (compare to **B**)
++ **F** confirms Kelly and Price correction on observed values yields false positive correlation, but weak (compare to **C**) (this becomes statistically significant at higher n)
 
 
-# Scenario 2: Relative change is unrelated to initial value; values are measured with error
-```{r s2.1}
+# Scenario 2
+
+### No relationship between change and initial
+### v_pop == v_err >>> v_ind
+
+```{r s2}
+# Set variances
+v_pop <- 1
+v_ind <- 0.001
+v_err <- 1
+
+# Simulate data
 set.seed(1)
-df2 <- df1 %>%
-  mutate(log_init_obs = log_init_true + rnorm(n, mean = 0, sd = 0.3),   # Add random measurement error to initial values
-         log_final_obs = log_final_true + rnorm(n, mean = 0, sd = 0.3), # Add random measurement error to final values
-         log_change_obs = log_final_obs - log_init_obs)                 # Observed change
+df2 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
 
+# Apply Kelly Price correction to true values and observed values
+df2 <- df2 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 2 data
+plots2 <- map(plots1, ~ .x %+% df2)
+
+# Create multipanel plot
+plots2panel <- ggpubr::ggarrange(plotlist = plots2, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots2panel
+```
+
++ Confirms when variance in observed change is mostly due to measurement error, Kelly Price adjustment recovers the correct zero relationship between observed change and initial (see **F**)
+
+# Scenario 3
+
+### No relationship between change and initial
+### v_pop == v_ind >>> v_err
+
+```{r s3}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 0.001
+
+# Simulate data
+set.seed(1)
+df3 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df3 <- df3 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots3 <- map(plots1, ~ .x %+% df3)
+
+# Create multipanel plot
+plots3panel <- ggpubr::ggarrange(plotlist = plots3, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots3panel
+```
+
++ Confirms that when variance in observed change is mostly due to true variation in individual responses, Kelly Price adjustment yields a strong spurious positive correlation between observed change and initial (see **F**)
+
+# Scenario 4
+
+### True negative relationship between change and initial
+### v_pop == v_ind == v_err
+
+```{r s4}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 1
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df4 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df4 <- df4 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots4 <- map(plots1, ~ .x %+% df4)
+
+# Create multipanel plot
+plots4panel <- ggpubr::ggarrange(plotlist = plots4, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots4panel
+```
+
++ Confirms that when there is a true negative relationship between initial and change, Kelly Price adjustment yields a false positive correlation between initial and change (see **C**), and a false zero correlation between observed initial and change (see **F**).
+
+# Scenario 5
+
+### True negative relationship between change and initial
+### v_pop == v_err >>> v_ind
+
+```{r s5}
+# Set variances
+v_pop <- 1
+v_ind <- 0.001
+v_err <- 1
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df5 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df5 <- df5 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots5 <- map(plots1, ~ .x %+% df5)
+
+# Create multipanel plot
+plots5panel <- ggpubr::ggarrange(plotlist = plots5, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots5panel
+```
+
++ Confirms when variance in observed change is mostly due to measurement error, Kelly Price adjustment yields true negative relationship between true change and initial (see **C**), but a false zero relationship between observed change and initial (see **F**).
+
+# Scenario 6
+
+### True negative relationship between change and initial
+### v_pop == v_ind >>> v_err
+
+```{r s5}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 0.001
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df6 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df6 <- df6 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots6 <- map(plots1, ~ .x %+% df6)
+
+# Create multipanel plot
+plots6panel <- ggpubr::ggarrange(plotlist = plots6, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots6panel
+```
+
++ Confirms that when variance in observed change is mostly due to true variation in individual responses, Kelly Price adjustment yields a false positive correlation between true change and initial (see **C**), and a false positive correlation between observed change and initial (see **F**).
+
+# Test combinations of var_ind, var_err, and b to see when KP adjustment recovers true or false relationship between observed change and initial
+
+```{r}
+pars <- expand_grid(
+  v_pop = 1,
+  v_ind = seq(0, 1, 0.1),
+  v_err = seq(0, 1, 0.1),
+  b = seq(-0.4, 0.4, 0.1)
+)
+
+test.cors <- function(v_pop, v_ind, v_err, b) {
+  # Simulate data
+  df <- tibble(
+    log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+    log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),   
+    log_final_true = log_init_true + log_change_true,           # Final = initial + change
+    e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+    e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+    log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+    log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+    log_change_obs = log_final_obs - log_init_obs   # Observed change
+  )
+  # Apply Kelly Price correction to observed values
+  df <- df %>% mutate(
+    log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+  )
+  # Get true, observed, and adjusted correlations between change and initial
+  bind_rows(.id = "cor.type",
+      #true = tidy(cor.test(df$log_change_true, log_init_true)),
+      obs = tidy(cor.test(df$log_change_obs, df$log_init_obs)),
+      adj = tidy(cor.test(df$log_change_obs_adj, df$log_init_obs))
+  ) %>% bind_cols(
+    v_pop = v_pop,
+    v_ind = v_ind,
+    v_err = v_err,
+    b = b
+  )
+}
+
+# Run the function on all parameter combinations and bind results
+results <- pmap_dfr(pars, test.cors) %>%
+  select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value) %>%
+  mutate(outcome = case_when(
+    p.value > 0.01 & b == 0 ~ "correct",
+    p.value > 0.01 & b != 0 ~ "type2 - misses effect that does exist",
+    p.value < 0.01 & sign(estimate) != sign(b) ~ "type1 - detects effect that does not exist",
+    p.value < 0.01 & sign(estimate) == sign(b) ~ "correct"
+  ))
+
+# Get the parameters, correlation coefficients, and statistical significance for each simulation
+# (b, and estimates based on true, observed, and adjusted values)
+results_summ <- results %>%
+  pivot_wider(id_cols = c(v_pop, v_ind, v_err, b),
+              names_from = cor.type,
+              values_from = outcome) %>%
+  mutate(which = case_when(obs == "correct" & adj == "incorrect" ~ "obs",
+                           obs == "incorrect" & adj == "correct" ~ "adj",
+                           obs == "correct" & adj == "correct" ~ "both",
+                           obs == "incorrect" & adj == "incorrect" ~ "neither"))
+
+ggplot(results, aes(x = v_ind, y = v_err)) +
+  geom_point(aes(shape = cor.type, size = cor.type, color = outcome), alpha = 0.5) +
+  facet_wrap(~b) +
+  scale_color_manual(values = c("forestgreen", "red", "blue", "gray")) +
+  scale_shape_manual(values = c(16, 15))
+  # scale_size_manual(values = c(7,5))
+
+ggplot(results_summ, aes(x = v_ind, y = v_err)) +
+  geom_point(aes(shape = which, color = which)) +
+  facet_wrap(~b)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+########
+# Scenario : Relative change is unrelated to initial value; values are measured with error
+```{r s2.1}
 # Final vs. Initial, observed values with measurement error
 # Expect: slope ≈ 1
-mod2.1 <- lm(log_final_obs ~ log_init_obs, data = df2)
+mod2.1 <- lm(log_final_obs ~ log_init_obs, data = df1)
 res2.1 <- slope_test(mod2.1, 1, "less")
-p2.1 <- ggplot(df2, aes(x = log_init_obs, y = log_final_obs)) +
+p2.1 <- ggplot(df1, aes(x = log_init_obs, y = log_final_obs)) +
   geom_point(alpha = 0.25) +
   res2.1$line +
   res2.1$annotation +
@@ -180,9 +515,9 @@ p2.1 <- ggplot(df2, aes(x = log_init_obs, y = log_final_obs)) +
 
 # Change vs. initial, observed values with measurement error
 # Expect: slope ≈ 0
-mod2.2 <- lm(log_change_obs ~ log_init_obs, data = df2)
+mod2.2 <- lm(log_change_obs ~ log_init_obs, data = df1)
 res2.2 <- slope_test(mod2.2, 0, "less")
-p2.2 <- ggplot(df2, aes(x = log_init_obs, y = log_change_obs)) +
+p2.2 <- ggplot(df1, aes(x = log_init_obs, y = log_change_obs)) +
   geom_point(alpha = 0.25) +
   res2.2$line +
   res2.2$annotation +
@@ -197,13 +532,13 @@ Shows measurement error in initial values leads to mathematical coupling and spu
 ### Does the Kelly and Price method recover correct relationship (slope = 0)?
 ```{r s2.2}
 # Apply Kelly and Price method to get adjusted change
-df2 <- df2 %>%
+df1 <- df1 %>%
   mutate(log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
 
 # Model adjusted change vs. initial values
-mod2.3 <- lm(log_change_obs_adj ~ log_init_obs, data = df2)
+mod2.3 <- lm(log_change_obs_adj ~ log_init_obs, data = df1)
 res2.3 <- slope_test(mod2.3, 0, "less")
-p2.3 <- ggplot(df2, aes(x = log_init_obs, y = log_change_obs_adj)) +
+p2.3 <- ggplot(df1, aes(x = log_init_obs, y = log_change_obs_adj)) +
   geom_point(alpha = 0.25) +
   res2.3$line +
   res2.3$annotation +
@@ -215,6 +550,8 @@ p2.3
 
 Yes, Kelly and Price removes the spurious relationship caused by mathematical coupling. It is also able to do this when the measurement error is more extreme (tested with sd = 1).
 
+It appears to be OVERcorrecting-- slight positive correlation -- is it because it could not differentiate the individual variation in change from the measurement error???
+
 
 # Scenario 3: True negative relationship between change and initial values
 ```{r 3.1}
@@ -222,16 +559,24 @@ Yes, Kelly and Price removes the spurious relationship caused by mathematical co
 
 # Define strength of initial value effect on logchange
 # e.g., -0.2 means for every 1 unit increase in initial, 0.2 unit decrease in logchange
-b <- -0.2
+b <- -0.5
 
 # Define intercept to target 75% loss at mean initial value
-intercept <- log(0.25) - b * mean(df1$log_init_true)
+#intercept <- log(0.25) - b * mean(df2$log_init_true)
 
-set.seed(6)
 # Simulate log changes as an intercept + effect of initial value + noise
-df3 <- df1 %>%
-  mutate(log_change_true = intercept + b * log_init_true + rnorm(n, mean = 0, sd = 0.3),
-         log_final_true = log_init_true + log_change_true)
+set.seed(1)
+df3 <- tibble(
+  log_init_true = rnorm(n, mean = pdam.mean.init, sd = pdam.sd),
+  log_change_true = log(0.25) + b * log_init_true + rnorm(n, mean = 0, sd = 0.3),  # Greater losses for higher initials
+  log_final_true = log_init_true + log_change_true,     # True final values
+  e_init = rnorm(n, mean = 0, sd = 0.3),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = 0.3),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)
+
 
 # Final vs. initial, true values
 # Expected: slope = 0.8
@@ -244,6 +589,7 @@ p3.1 <- ggplot(df3, aes(x = log_init_true, y = log_final_true)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   theme_minimal() +
   labs(title = "Final vs. initial (true relationship; true values)")
+p3.1
 
 # Change vs. initial, true values
 # Expected: slope = -0.2
@@ -257,6 +603,8 @@ p3.2 <- ggplot(df3, aes(x = log_init_true, y = log_change_true)) +
   labs(title = "Change vs. initial (true relationship; true values)")
 
 p3.2
+
+
 ```
 
 ### Does the Kelly and Price method change this relationship?
@@ -321,6 +669,14 @@ shapiro.test(pdam$log_init)
 shapiro.test(pdam$log_final)
 shapiro.test(pdam$log_change)
 # initial, final, and changes are all normally distributed
+p4.1 <- ggplot(pdam, aes(x = log_init, y = log_final)) + 
+  geom_point() + 
+  coord_fixed() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_smooth(method = "lm", se = FALSE)
+p4.1
+var(pdam$log_init)
+var(pdam$log_final)
 
 # Change vs. initial, real data
 # Expected: slope = -0.2
@@ -338,9 +694,6 @@ p4.2
 
 ### Does the Kelly and Price method change this relationship?
 ```{r s3.2}
-# Test for bivariate normality
-MVN::mvn(select(pdam, log_init, log_final))
-
 # Apply Kelly and Price method to get adjusted change
 pdam <- pdam %>%
   mutate(log_change_adj = rttm.adj(log_init, log_final)[, 3])
@@ -356,35 +709,8 @@ p4.3 <- ggplot(pdam, aes(x = log_init, y = log_change_adj)) +
   labs(title = "K-P adjusted change vs. initial (real data)")
 
 p4.3
-
-# back-transform adjusted data?
-# pdam <- pdam %>%
-#   mutate(back_change = exp(log_change_adj),
-#          back_init = exp(log_init))
-# ggplot(pdam, aes(x = back_init, y = back_change)) + geom_point()
 ```
 
-# Real data no log?
-```{r}
-# Try on S/H ratios (non-logged)
-pdam <- pdam %>%
-  mutate(init = exp(log_init),
-         final = exp(log_final),
-         change = final - init)
-MVN::mvn(select(pdam, init, final))     # Does not meet bivariate normal assumption
-  
-# Plot
-ggplot(pdam, aes(x = init, y = change)) + geom_point()
-summary(lm(change~init, data = pdam))
-
-# Adjustment
-pdam <- pdam %>%
-  mutate(change_adj = rttm.adj(init, final)[, 3])
-
-# Replot
-ggplot(pdam, aes(x = init, y = change_adj)) + geom_point()
-summary(lm(change_adj~init, data = pdam))
-```
 
 # Real data Million Acer growth
 ```{r}
@@ -430,11 +756,10 @@ This reproduces Carly's analysis --- but problem of lognormal?
 ```{r}
 mill <- tibble(subMil1) %>%
   filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
-  filter(InitialSize > 2) %>%     # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
+  filter(InitialSize > 2) %>%    # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
   mutate(log_init = log(InitialSize),
          log_final = log(size),
-         log_change = log_final - log_init) %>%
-  filter(log_change > -1 & log_change < 2)
+         log_change = log_final - log_init)
 
 # Change vs. initial
 mod5.2 <- lm(log_change ~ log_init, data = mill)
@@ -463,11 +788,7 @@ p5.3 <- ggplot(mill, aes(x = log_init, y = log_change_adj)) +
 
 p5.3
 
-# backtransform adjusted sizes
-mill <- mill %>%
-  mutate(back_change_adj = exp(log_change_adj))
-ggplot(mill, aes(x = InitialSize, y = back_change_adj)) + geom_point() +
-  geom_smooth(method = "lm", se = FALSE)
+
 ```
 
 
@@ -502,5 +823,87 @@ df8 <- tibble(
 
 ggplot(df8, aes(x = init, y = change)) + geom_point()
 
+```
+
+# Simulate exponential growth
+```{r}
+library(tidyverse)
+
+# Parameters
+total_steps <- 1000
+n_individuals <- 50
+r <- 0.001
+sigma <- 0.005
+N0 <- 10
+
+# Choose 10 evenly spaced time steps (sorted just in case)
+measured_times <- round(seq(1, total_steps, length.out = 10))
+
+# Simulate exponential growth with stochastic noise
+size <- matrix(NA, nrow = total_steps, ncol = n_individuals)
+size[1, ] <- N0
+
+for (t in 2:total_steps) {
+  growth_noise <- rnorm(n_individuals, mean = r, sd = sigma)
+  size[t, ] <- size[t - 1, ] * exp(growth_noise)
+}
+
+# Build data frame of initial size and change in size between measured steps
+df <- map_dfr(1:(length(measured_times) - 1), function(i) {
+  t1 <- measured_times[i]
+  t2 <- measured_times[i + 1]
+  tibble(
+    time = t1,
+    individual = 1:n_individuals,
+    initial_size = size[t1, ],
+    final_size = size[t2, ],
+    change_in_size = size[t2, ] - size[t1, ]
+  )
+})
+df
+
+(p1 <- ggplot(df, aes(x = initial_size, y = change_in_size)) + geom_point())      # LOG OF RAW DIFF
+p1 + scale_x_log10() + scale_y_log10()
+
+df <- df %>%
+  mutate(log_change_ratio = log(final_size/initial_size),       # LOG RATIO
+         log_change_diff = log(final_size) - log(initial_size),          # LOG RATIO 
+         log_initial_size = log(initial_size),
+         log_final_size = log(final_size),
+         log_change_in_size_adj = rttm.adj(log_initial_size, log_final_size)[,3])
+
+ggplot(df, aes(x = log_initial_size, y = log_change_diff)) + geom_point()
+cor(df$log_initial_size, df$log_change_in_size)
+ggplot(df, aes(x = log_initial_size, y = log_change_in_size_adj)) + geom_point()
+cor(df$log_initial_size, df$log_change_in_size_adj)
+```
+
+Something about how with exp growth we're multiplying by the change rather than adding the change
+
+```{r}
+# Pdam -- adding vs multiplying logs?
+pdam %>%
+  mutate(log_change_add = log_final - log_init,
+         log_change_mult = log_final/log_init)
+
+ggplot(pdam, aes(x = log_init, y = log_change)) + geom_point()
+
+ggplot(pdam, aes(x = log_init, y = log_change_adj)) + geom_point()
+
+pdam <- pdam %>%
+  mutate(initial = exp(log_init),
+         final = exp(log_final),
+         change_adj = exp(log_change_adj),
+         final_adj = initial * change_adj)
+
+ggplot(pdam, aes(x = initial, y = final_adj)) + 
+  geom_point() + coord_fixed() + geom_abline(aes(slope = 1, intercept = 0))
+ggplot(pdam, aes(x = initial, y = final)) + 
+  geom_point() + coord_fixed() + geom_abline(aes(slope = 1, intercept = 0))
+
+ggplot(pdam, aes(x = log_init, y = log(final_adj/initial))) + geom_point()
+ggplot(pdam, aes(x = log(initial), y = log_change_adj)) + geom_point()
+cor(pdam$log_init, pdam$log_change)
+cor(pdam$log_init, pdam$log_change_adj)
 ```
 

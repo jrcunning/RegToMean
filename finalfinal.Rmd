@@ -1,0 +1,563 @@
+---
+title: "Regression to the mean and the detection of true relationships between change and initial values"
+author: "Ross Cunning"
+date: "2025-04-13"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    theme: default  # or "lumen", "flatly", etc.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r libraries, echo = FALSE}
+# Load libraries
+library(tidyverse)
+library(ggpubr)
+library(broom)
+```
+
+```{r functions, echo = FALSE}
+# Define helper functions
+
+# Function to correct for spurious slopes, from Kelly and Price 2005
+rttm.adj <- function(m1, m2){
+  raw.growth<-m2-m1
+  vart<-var.test(m1,m2,paired = T) ## variances equal? 
+  vpv<-vart$p.value # var.test p value
+  m1m2cor<-cor.test(m1, m2) # test correlation between m1 and m2 
+  rho<-m1m2cor$estimate # correlation coefficient between m1 and m2 
+  m1sd<-sd(m1) # m1 sd
+  m2sd<-sd(m2) # m2 sd
+  m1v<-var(m1) # m1 var
+  m2v<-var(m2) # m2 var
+  m1m<-mean(m1) # m1 mean
+  m2m<-mean(m2) # m2 mean
+  pm<-mean(raw.growth)
+  rho2<-(2*rho*m1sd*m2sd)/(m1v+m2v) # adjusted correlation coefficient used if variances are equal
+  rhof<-ifelse(vpv <= 0.05, rho, rho2) # which rho is used for dstar calculation is based on variance comparison
+  dstar<-(rhof*(m1-m1m)-(m2-m2m))*-1 # adjustment values. Multiply by -1 to flip sign because Kelly and Price based on plasticity as m1-m2, not m2-m1 as in most thermal tolerance estimates
+  adj.growth <- pm+dstar # corrected plasticity. 
+  out<-as.data.frame(cbind(raw.growth, dstar, adj.growth)) 
+  return(out)
+}
+```
+
+
+# Objectives
+
+Use simulated datasets to test conditions under which mathematical coupling, regression to the mean, and statistical adjustments to control for these artifacts could:  
+
+1. correctly recover the true relationship between change and initial values;
+2. produce a spurious relationship when there is not one;  
+2. fail to recover a true relationship when there is one.  
+
+Simulations have either no relationship between change and initial values ([Scenario 1](#Scenario 1: No relationship between change and initial)), or a true relationship specified by parameter *b* ([Scenario 2](# Scenario 2: True negative relationship between change and initial)), and include three sources of variance:  
+
+1. Variance among individuals in the true value (population variance; *v_pop*)  
+2. Variance in within-individual changes over time (individual-level variance; *v_ind*)  
+3. Variance due to noice or imprecision in measurement (error variance; *v_err*))       
+
+Parameter space then is explored through a [simulation study](# Simulation study of observed and adjusted correlation reliability) to find which combinations of *b*, *v_ind*, and *v_err* give rise to true or spurious relationships based on observed values or those corrected with the Kelly Price adjustment for regression to the mean.
+
+Following simulations, analyze two coral datasets describing [symbiont changes in *P. damicornis*](# Dataset 1: *P. damicornis* symbiont changes) and [growth in *A. cervicornis*](# Dataset 2: *A. cervicornis* growth) and assess the likelihood of the true relationship given observed values in the context of simulations.
+
+# Scenario 1: No relationship between change and initial
+
+## 1.1: Equal variances 
+### v_pop == v_ind == v_err
+
+```{r s1}
+# Set number of individuals for simulations
+n <- 1000
+
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 1
+
+# Simulate data
+set.seed(1)
+df1 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df1 <- df1 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Plot
+p1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
+  geom_point(alpha = 0.25) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  stat_cor() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlim(-4, 4) + ylim(-5, 5)
+p2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
+  geom_point(alpha = 0.25) +
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+  stat_cor() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlim(-4, 4) + ylim(-3, 3)
+p3 <- p2 + aes(x = log_init_true, y = log_change_true_adj)
+p4 <- p1 + aes(x = log_init_obs, y = log_final_obs)
+p5 <- p2 + aes(x = log_init_obs, y = log_change_obs)
+p6 <- p2 + aes(x = log_init_obs, y = log_change_obs_adj)
+
+plots1 <- list(p1, p2, p3, p4, p5, p6)
+
+plots1panel <- ggpubr::ggarrange(plotlist = plots1, nrow = 2, ncol = 3, labels = "AUTO")
+
+plots1panel
+```
+
+* **A** confirms positive (but imperfect) correlation between true initial and final values (biologically realistic)
+* **B** confirms no relationship between true change and true initial (because simulated independently)
+* **C** confirms Kelly and Price correction on true values yields false positive correlation between change and initial (because initial and final imperfectly correlated due to individual variation)
+* **D** confirms positive (but more imperfect, compare to **A**) correlation between initial and final values observed with measurement error
+* **E** confirms spurious negative relationship between observed change and initial is due to measurement error (compare to **B**)
+* **F** confirms Kelly and Price correction on observed values yields false positive correlation, but weak (compare to **C**) (this becomes statistically significant at higher n)
+
+
+## 1.2: Variance in changes mostly due to measurement error
+### v_pop == v_err >>> v_ind
+
+```{r s2}
+# Set variances
+v_pop <- 1
+v_ind <- 0.001
+v_err <- 1
+
+# Simulate data
+set.seed(1)
+df2 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df2 <- df2 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 2 data
+plots2 <- map(plots1, ~ .x %+% df2)
+
+# Create multipanel plot
+plots2panel <- ggpubr::ggarrange(plotlist = plots2, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots2panel
+```
+
+* Confirms when variance in observed change is mostly due to measurement error (v_err >>> v_ind), Kelly Price adjustment recovers the correct zero relationship between observed change and initial (see **F**)
+
+## 1.3: Variance in changes mostly due to individual differences 
+### (v_pop == v_ind >>> v_err)
+
+```{r s3}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 0.001
+
+# Simulate data
+set.seed(1)
+df3 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df3 <- df3 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots3 <- map(plots1, ~ .x %+% df3)
+
+# Create multipanel plot
+plots3panel <- ggpubr::ggarrange(plotlist = plots3, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots3panel
+```
+
+* Confirms that when variance in observed change is mostly due to true variation in individual responses (v_ind >>> v_err), Kelly Price adjustment yields a strong spurious positive correlation between observed change and initial (see **F**)
+
+# Scenario 2: True negative relationship between change and initial 
+
+## 2.1: Equal variances 
+### v_pop == v_ind == v_err
+
+```{r s4}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 1
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df4 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df4 <- df4 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots4 <- map(plots1, ~ .x %+% df4)
+
+# Create multipanel plot
+plots4panel <- ggpubr::ggarrange(plotlist = plots4, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots4panel
+```
+
+* Confirms that when there is a true negative relationship between initial and change, Kelly Price adjustment yields a false positive correlation between initial and change (see **C**), and a false zero correlation between observed initial and change (see **F**).
+
+## 2.2: Variance in changes mostly due to measurement error 
+### v_pop == v_err >>> v_ind
+
+```{r s5}
+# Set variances
+v_pop <- 1
+v_ind <- 0.001
+v_err <- 1
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df5 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df5 <- df5 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots5 <- map(plots1, ~ .x %+% df5)
+
+# Create multipanel plot
+plots5panel <- ggpubr::ggarrange(plotlist = plots5, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots5panel
+```
+
+* Confirms when variance in observed change is mostly due to measurement error, Kelly Price adjustment yields true negative relationship between true change and initial (see **C**), but a false zero relationship between observed change and initial (see **F**).
+
+## 2.3: Variance in changes mostly due to individual differences 
+### v_pop == v_ind >>> v_err
+
+```{r s6}
+# Set variances
+v_pop <- 1
+v_ind <- 1
+v_err <- 0.001
+
+# Set strength of true relationship
+b <- -0.2
+
+# Simulate data
+set.seed(1)
+df6 <- tibble(
+  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+  log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
+  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
+  log_final_true = log_init_true + log_change_true,           # Final = initial + change
+  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+  log_change_obs = log_final_obs - log_init_obs   # Observed change
+)  
+
+# Apply Kelly Price correction to true values and observed values
+df6 <- df6 %>% mutate(
+  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+  
+# Update list of plots with scenario 3 data
+plots6 <- map(plots1, ~ .x %+% df6)
+
+# Create multipanel plot
+plots6panel <- ggpubr::ggarrange(plotlist = plots6, nrow = 2, ncol = 3, labels = "AUTO")
+
+# Display plots
+plots6panel
+```
+
++ Confirms that when variance in observed change is mostly due to true variation in individual responses, Kelly Price adjustment yields a false positive correlation between true change and initial (see **C**), and a false positive correlation between observed change and initial (see **F**).
+
+# Simulation study of observed and adjusted correlation reliability
+
+### Vary the true relationship *b* and variances *v_ind* and *v_err* to identify when the observed or Kelly Price adjusted relationship recovers the true relationship *b*
+
+```{r parsim, fig.height = 7, fig.width = 10}
+pars <- expand_grid(
+  v_pop = 1,
+  v_ind = seq(0, 1, 0.1),
+  v_err = seq(0, 1, 0.1),
+  b = seq(-0.4, 0.4, 0.1)
+)
+
+test.cors <- function(v_pop, v_ind, v_err, b) {
+  # Simulate data
+  df <- tibble(
+    log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+    log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),   
+    log_final_true = log_init_true + log_change_true,           # Final = initial + change
+    e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+    e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
+    log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+    log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
+    log_change_obs = log_final_obs - log_init_obs   # Observed change
+  )
+  # Apply Kelly Price correction to observed values
+  df <- df %>% mutate(
+    log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+  )
+  # Get true, observed, and adjusted correlations between change and initial
+  bind_rows(.id = "cor.type",
+        obs.b = tidy(lm(log_change_obs ~ scale(log_init_obs), data = df))[2,],
+      obs.cor = tidy(cor.test(df$log_change_obs, df$log_init_obs)),
+      adj.cor = tidy(cor.test(df$log_change_obs_adj, df$log_init_obs))
+  ) %>% bind_cols(
+    v_pop = v_pop,
+    v_ind = v_ind,
+    v_err = v_err,
+    b = b
+  )
+}
+
+# tidy(lm(log_change_obs ~ scale(log_init_obs), data = df))[2,]
+# tidy(cor.test(df$log_change_obs, df$log_init_obs))
+# plot(df$log_init_obs, df$log_change_obs)
+
+
+
+# Run the function on all parameter combinations and bind results
+results <- pmap_dfr(pars, test.cors) %>%
+  select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value) %>%
+  mutate(outcome = case_when(
+    p.value > 0.01 & b == 0 ~ "correct",
+    p.value > 0.01 & b != 0 ~ "type2 - misses effect that does exist",
+    p.value < 0.01 & sign(estimate) != sign(b) ~ "type1 - detects effect that does not exist",
+    p.value < 0.01 & sign(estimate) == sign(b) ~ "correct"
+  ))
+
+
+results %>% 
+  filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
+  ggplot(aes(x = v_ind, y = v_err)) +
+    geom_point(aes(shape = cor.type, size = cor.type, color = outcome), alpha = 0.5) +
+    facet_wrap(~b) +
+    scale_color_manual(values = c("forestgreen", "red", "blue", "gray")) +
+    scale_shape_manual(values = c(16, 15)) +
+    scale_size_manual(values = c(4,6))
+```
+
+* **When true relationship is zero:**     
+  + Observed relationship is always *spuriously negative* due to regression to the mean/mathematical coupling    
+  + Corrected relationship is *spuriously positive* when v_ind > v_err     
+  + Corrected relationship is *correct* when v_err > v_ind     
+* **When true relationship is negative:**     
+  + Observed relationship is always negative (*correct*), but *spuriously overestimated*     
+  + Corrected relationship is *spuriously positive* when v_ind > v_err     
+  + Corrected relationship is *spuriously zero* when v_err > v_ind (and most always as b decreases)     
+* **When true relationship is positive:**      
+  + Observed relationship is *spuriously negative* when v_err is > 0.1-0.5 (increasing as b increases), *spuriously zero* at intermediate v_err values, but *correct* when v_err is very low  
+  + Corrected relationship is positive in most cases (*correct*), but probably *spuriously overestimated*
+
+
+# Dataset 1: *P. damicornis* symbiont changes
+
+#### from Cunning and Baker 2013
+
+### Import and tidy data
+```{r pdam_import_tidy}
+# Import and tidy Pdam data
+pdam0 <- read_csv("PdamRbleaching.csv")
+
+pdam <- pdam0 %>%
+  mutate(log_init_raw = log(juntotal),
+         log_final_raw = log(augtotal),
+         log_change = log_final_raw - log_init_raw)
+
+
+# Remove symbiont effect
+
+## Calculate grand mean
+grand_mean_init <- mean(pdam$log_init_raw)
+grand_mean_final <- mean(pdam$log_final_raw)
+
+## Add sym-group residuals to grand mean
+pdam <- pdam %>%
+  group_by(sym) %>%
+  mutate(group_resid_init = log_init_raw - mean(log_init_raw),
+         group_resid_final = log_final_raw - mean(log_final_raw)) %>%
+  ungroup() %>%
+  mutate(log_init_obs = grand_mean_init + group_resid_init,
+         log_final_obs = grand_mean_final + group_resid_final,
+         log_change_obs = log_final_obs - log_init_obs) %>%
+  select(colony, log_init_obs, log_final_obs, log_change_obs)
+
+# Kelly Price adjustment
+pdam <- pdam %>% mutate(
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+```
+
+### Observed and adjusted relationships in *P. damicornis* study
+```{r pdam_plots, fig.height = 2.5}
+pdam_plots <- list(
+  p4 %+% pdam + xlim(-4.1, -1) + ylim(-4.1, -1),
+  p5 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5),
+  p6 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5)
+)
+
+ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 3, labels = "AUTO")
+```
+
+* Observed relationship is negative (interpreted as density-dependent bleaching in Cunning and Baker 2013)
+* Kelly and Price adjusted relationship is zero, suggesting it could entirely reflect regression to the mean
+* Which is it? Look at which simulated scenarios reproduce this observed relationship...
+
+### Which simulations produce the observed relationship from *P. damicornis* study?
+```{r pdam_scenarios}
+# What is *b* from Pdam dataset (change in response per 1 SD change in predictor)
+pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)
+pdam_b <- coef(pdam_mod)[[2]]      # -0.37
+
+# Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
+b_summ <- results %>%
+  filter(cor.type == "obs.b",
+         abs(estimate - pdam_b) < 0.1)
+
+# Plot which of the scenarios producing this b value reflect a correct (true) negative relationship, or not
+ggplot(b_summ, aes(x = v_ind, y = v_err, shape = outcome == "correct", color = outcome == "correct")) +
+  geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
+  xlim(0, 1) +
+  ylim(0, 1)
+```
+
+* The simulations where the *P. damicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < 0.3-0.4.     
+* The simulations where the *P. damicornis* observed outcome is NOT correct (i.e., reflects a spurious relationship) are when v_err > 0.3-0.4.
+
+# Dataset 2: *A. cervicornis* growth
+
+#### from Million et al.
+
+### Import and tidy data
+```{r mill_import_tidy}
+# Import data
+mill <- read_csv("subMil1.csv")       # Generated in Carly's script
+
+# Tidy and filter data
+mill <- mill %>%
+  filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
+  filter(InitialSize > 2) %>%    # cutoff of 1 gives adjusted marginal sig, cutoff 2 nonsig
+  mutate(log_init_obs = log(InitialSize),
+         log_final_obs = log(size),
+         log_change_obs = log_final_obs - log_init_obs)
+
+# Kelly Price adjustment
+mill <- mill %>% mutate(
+  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+```
+
+### Observed and adjusted relationships in *A. cervicornis* study
+```{r mill_plots, fig.height = 2.5}
+### Observed and adjusted relationships in *A. cervicornis* study
+mill_plots <- list(
+  p4 %+% mill + xlim(0.5, 4.5) + ylim(-0.5, 5),
+  p5 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8),
+  p6 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8)
+)
+
+ggpubr::ggarrange(plotlist = mill_plots, nrow = 1, ncol = 3, labels = "AUTO")
+```
+
+### Which simulations produce the observed relationship from *A. cervicornis* study?
+```{r mill_scenarios}
+# What is *b* from Acer dataset (change in response per 1 SD change in predictor)
+mill_mod <- lm(log_change_obs ~ scale(log_init_obs), data = mill)
+mill_b <- coef(mill_mod)[[2]]      # -0.09
+
+# Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
+mill_b_summ <- results %>%
+  filter(cor.type == "obs.b",
+         abs(estimate - mill_b) < 0.1)
+
+# Plot which of the scenarios producing this b value reflect a correct (true) negative relationship, or not
+ggplot(mill_b_summ, aes(x = v_ind, y = v_err, shape = outcome == "correct", color = outcome == "correct")) +
+  geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
+  xlim(0, 1) +
+  ylim(0, 1)
+```
+
+* The simulations where the *A. cervicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < ~0.1     
+* The simulations where the *A. cervicornis* observed outcome is NOT correct (i.e., reflects a spurious relationship) are when v_err > ~0.1.
+* The calculated v_err from Carly's script is 0.005-0.013 relative to the total variance (depends on whether it should be variance of final or variance of initial?). Either way, this is very low and much lower than the ~0.1 simulation threshold.
+* Conclusion: A negative relationship between initial size and change in size is very likely real.
