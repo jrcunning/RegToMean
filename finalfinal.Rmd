@@ -18,6 +18,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 # Load libraries
 library(tidyverse)
 library(ggpubr)
+library(ggpmisc)
 library(broom)
 ```
 
@@ -106,12 +107,16 @@ p1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   stat_cor() +
   geom_smooth(method = "lm", se = FALSE) +
+  stat_regline_equation(aes(label = ..eq.label..), label.y.npc = 0.9) +
   xlim(-4, 4) + ylim(-5, 5)
+p1
+
 p2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
   geom_point(alpha = 0.25) +
   geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
   stat_cor() +
   geom_smooth(method = "lm", se = FALSE) +
+  stat_regline_equation(label.y.npc = 0.9) +
   xlim(-4, 4) + ylim(-3, 3)
 p3 <- p2 + aes(x = log_init_true, y = log_change_true_adj)
 p4 <- p1 + aes(x = log_init_obs, y = log_final_obs)
@@ -466,6 +471,16 @@ pdam <- pdam %>%
 pdam <- pdam %>% mutate(
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
+
+save(pdam, file = "pdam.RData")
+var(pdam$log_init_obs)
+var(pdam$log_final_obs)
+
+pdam %>%
+  pivot_longer(c(log_init_obs, log_final_obs)) %>%
+  ggplot(aes(x = name, y = value, group = factor(colony), color = factor(colony))) +
+  geom_point() +
+  geom_line()
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
