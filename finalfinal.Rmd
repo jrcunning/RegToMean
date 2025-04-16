@@ -103,20 +103,20 @@ df1 <- df1 %>% mutate(
   
 # Plot
 p1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
-  geom_point(alpha = 0.25) +
+  geom_point(alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   stat_cor() +
   geom_smooth(method = "lm", se = FALSE) +
-  stat_regline_equation(aes(label = ..eq.label..), label.y.npc = 0.9) +
+  stat_regline_equation(aes(label = ..eq.label..),
+                       label.y.npc = 0.1, output.type = "text") +
   xlim(-4, 4) + ylim(-5, 5)
-p1
-
 p2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
-  geom_point(alpha = 0.25) +
+  geom_point(alpha = 0.2) +
   geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
   stat_cor() +
   geom_smooth(method = "lm", se = FALSE) +
-  stat_regline_equation(label.y.npc = 0.9) +
+  stat_regline_equation(aes(label = ..eq.label..),
+                       label.y.npc = 0.1, output.type = "text") +
   xlim(-4, 4) + ylim(-3, 3)
 p3 <- p2 + aes(x = log_init_true, y = log_change_true_adj)
 p4 <- p1 + aes(x = log_init_obs, y = log_final_obs)
@@ -361,9 +361,9 @@ plots6panel
 ```{r parsim, fig.height = 7, fig.width = 10}
 pars <- expand_grid(
   v_pop = 1,
-  v_ind = seq(0, 1, 0.1),
-  v_err = seq(0, 1, 0.1),
-  b = seq(-0.4, 0.4, 0.1)
+  v_ind = seq(1e-3, 1, 0.1),
+  v_err = seq(1e-3, 1, 0.1),
+  b = round(seq(-1.4, 1.4, by = 0.2), 1)
 )
 
 test.cors <- function(v_pop, v_ind, v_err, b) {
@@ -385,6 +385,7 @@ test.cors <- function(v_pop, v_ind, v_err, b) {
   # Get true, observed, and adjusted correlations between change and initial
   bind_rows(.id = "cor.type",
         obs.b = tidy(lm(log_change_obs ~ scale(log_init_obs), data = df))[2,],
+        adj.b = tidy(lm(log_change_obs_adj ~ scale(log_init_obs), data = df))[2,],
       obs.cor = tidy(cor.test(df$log_change_obs, df$log_init_obs)),
       adj.cor = tidy(cor.test(df$log_change_obs_adj, df$log_init_obs))
   ) %>% bind_cols(
@@ -416,7 +417,7 @@ results %>%
   filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
   ggplot(aes(x = v_ind, y = v_err)) +
     geom_point(aes(shape = cor.type, size = cor.type, color = outcome), alpha = 0.5) +
-    facet_wrap(~b) +
+    facet_wrap(~b, ncol = 5) +
     scale_color_manual(values = c("forestgreen", "red", "blue", "gray")) +
     scale_shape_manual(values = c(16, 15)) +
     scale_size_manual(values = c(4,6))
@@ -433,6 +434,29 @@ results %>%
 * **When true relationship is positive:**      
   + Observed relationship is *spuriously negative* when v_err is > 0.1-0.5 (increasing as b increases), *spuriously zero* at intermediate v_err values, but *correct* when v_err is very low  
   + Corrected relationship is positive in most cases (*correct*), but probably *spuriously overestimated*
+
+```{r}
+slopes <- filter(results, cor.type %in% c("adj.b", "obs.b"))
+
+ggplot(slopes, aes(x = b, y = estimate)) +
+  geom_jitter(aes(color = v_err), width = 0.05, height = 0, alpha = 0.2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  facet_wrap(~cor.type) +
+  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
+
+ggplot(slopes, aes(x = b, y = estimate)) +
+  geom_jitter(aes(color = v_ind), width = 0.05, height = 0, alpha = 0.2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  facet_wrap(~cor.type) +
+  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
+
+ggplot(slopes, aes(x = b, y = estimate)) +
+  geom_jitter(aes(color = log(v_err/v_ind)), width = 0.05, height = 0, alpha = 0.2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  facet_wrap(~cor.type) +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
+```
 
 
 # Dataset 1: *P. damicornis* symbiont changes
@@ -500,9 +524,14 @@ ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 3, labels = "AUTO")
 
 ### Which simulations produce the observed relationship from *P. damicornis* study?
 ```{r pdam_scenarios}
+
 # What is *b* from Pdam dataset (change in response per 1 SD change in predictor)
 pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)
+pdam_rawb <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[[2]]
 pdam_b <- coef(pdam_mod)[[2]]      # -0.37
+pdam_ci <- confint(pdam_mod)
+### SHOULD THIS BE SCALED OR NOT? it prob should
+
 
 # Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
 b_summ <- results %>%
