@@ -46,6 +46,82 @@ rttm.adj <- function(m1, m2){
   out<-as.data.frame(cbind(raw.growth, dstar, adj.growth)) 
   return(out)
 }
+
+
+
+## GGplot var.test
+stat_var_test <- function(mapping = NULL, data = NULL,
+                          method = var.test,
+                          xvar = NULL, yvar = NULL,
+                          label.x = NULL, label.y = NULL,
+                          position = "identity",
+                          na.rm = FALSE, show.legend = NA,
+                          inherit.aes = TRUE, ...) {
+
+  layer(
+    stat = StatVarTest,
+    data = data,
+    mapping = mapping,
+    geom = "text",
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(
+      method = method,
+      xvar = xvar,
+      yvar = yvar,
+      label.x = label.x,
+      label.y = label.y,
+      na.rm = na.rm,
+      ...
+    )
+  )
+}
+
+StatVarTest <- ggproto("StatVarTest", Stat,
+  required_aes = c("x", "y"),
+  compute_group = function(data, scales, method, xvar, yvar, label.x, label.y) {
+    cat("Number of rows in compute_group:", nrow(data), "\n")
+    # Perform the test
+    vtest <- method(data$x, data$y)
+
+    # Create label
+    label <- paste0("var.ratio = ", signif(vtest$estimate, 3),
+                    ",\np = ", signif(vtest$p.value, 3))
+
+    # Determine label position
+    data.frame(
+      x = label.x %||% mean(range(data$x, na.rm = TRUE)),
+      y = label.y %||% max(data$y, na.rm = TRUE),
+      label = label
+    )
+  }
+)
+
+
+
+# Chiolero plot function
+chiolero_plot <- function(df, init_var, final_var, label = NULL) {
+  init_sym <- ensym(init_var)
+  final_sym <- ensym(final_var)
+  init_name <- as_label(init_sym)
+  final_name <- as_label(final_sym)
+
+  ggplot(df, aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
+    geom_segment(alpha = 0.1) +
+    geom_point(aes(x = 1, y = !!init_sym), size = 1.5) +
+    geom_point(aes(x = 2, y = !!final_sym), size = 1.5) +
+    scale_y_continuous(limits = c(-max_abs_initfinal, max_abs_initfinal)) +
+    scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
+                       expand = c(0.15, 0.15)) +
+    labs(x = "timepoint", y = "value") +
+    stat_var_test(
+      mapping = aes(x = !!init_sym, y = !!final_sym, group = 1),
+      label.x = 1.5,
+      label.y = max_abs_initfinal,
+      vjust = 1
+    )
+}
 ```
 
 
@@ -61,7 +137,7 @@ Simulations have either no relationship between change and initial values ([Scen
 
 1. Variance among individuals in the true value (population variance; *v_pop*)  
 2. Variance in within-individual changes over time (individual-level variance; *v_ind*)  
-3. Variance due to noice or imprecision in measurement (error variance; *v_err*))       
+3. Variance due to noise or imprecision in measurement (error variance; *v_err*))       
 
 Parameter space then is explored through a [simulation study](# Simulation study of observed and adjusted correlation reliability) to find which combinations of *b*, *v_ind*, and *v_err* give rise to true or spurious relationships based on observed values or those corrected with the Kelly Price adjustment for regression to the mean.
 
@@ -72,7 +148,7 @@ Following simulations, analyze two coral datasets describing [symbiont changes i
 ## 1.1: Equal variances 
 ### v_pop == v_ind == v_err
 
-```{r s1}
+```{r s1.1, fig.width = 10, fig.height = 5}
 # Set number of individuals for simulations
 n <- 1000
 
@@ -100,32 +176,62 @@ df1 <- df1 %>% mutate(
   log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
-  
-# Plot
-p1 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
+
+# ## Compute plot limit values
+max_abs_initfinal <- df1 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df1 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+
+# Plot 1: TRUE Chiolero style initial and final values, timepoints on x-axis
+p1 <- chiolero_plot(df1, log_init_true, log_final_true)
+
+# Plot 2: TRUE final vs. initial scatterplot
+p2 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
   geom_point(alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  stat_cor() +
+  stat_cor(label.x = -max_abs_initfinal, label.y = max_abs_initfinal) +
   geom_smooth(method = "lm", se = FALSE) +
-  stat_regline_equation(aes(label = ..eq.label..),
-                       label.y.npc = 0.1, output.type = "text") +
-  xlim(-4, 4) + ylim(-5, 5)
-p2 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
+  #stat_regline_equation(aes(label = ..eq.label..),
+  #                     label.y.npc = 0.1, output.type = "text") +
+  # stat_var_test(label.x = max_abs_initfinal, label.y = -max_abs_initfinal, 
+  #               hjust = 1, vjust = 0) +
+  coord_fixed(xlim = c(-max_abs_initfinal, max_abs_initfinal), 
+              ylim = c(-max_abs_initfinal, max_abs_initfinal))
+
+# Plot 3: TRUE change vs. initial scatterplot
+p3 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
   geom_point(alpha = 0.2) +
   geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
-  stat_cor() +
+  stat_cor(label.x = -max_abs_initchange, label.y = max_abs_initchange) +
   geom_smooth(method = "lm", se = FALSE) +
-  stat_regline_equation(aes(label = ..eq.label..),
-                       label.y.npc = 0.1, output.type = "text") +
-  xlim(-4, 4) + ylim(-3, 3)
-p3 <- p2 + aes(x = log_init_true, y = log_change_true_adj)
-p4 <- p1 + aes(x = log_init_obs, y = log_final_obs)
-p5 <- p2 + aes(x = log_init_obs, y = log_change_obs)
-p6 <- p2 + aes(x = log_init_obs, y = log_change_obs_adj)
+  #stat_regline_equation(aes(label = ..eq.label..),
+  #                     label.y.npc = 0.1, output.type = "text") +
+    coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange), 
+                ylim = c(-max_abs_initchange, max_abs_initchange))
 
-plots1 <- list(p1, p2, p3, p4, p5, p6)
+# Plot 4: ADJUSTED TRUE change vs. initial scatterplot
+p4 <- p3 + aes(x = log_init_true, y = log_change_true_adj)
 
-plots1panel <- ggpubr::ggarrange(plotlist = plots1, nrow = 2, ncol = 3, labels = "AUTO")
+# Plot 5: OBSERVED Chiolero style
+p5 <- chiolero_plot(df1, log_init_obs, log_final_obs)
+
+# Plot 6: OBSERVED final vs. initial scatterplot
+p6 <- p2 + aes(x = log_init_obs, y = log_final_obs)
+
+# Plot 7: OBSERVED change vs. initial scatterplot
+p7 <- p3 + aes(x = log_init_obs, y = log_change_obs)
+
+# Plot 8: ADJUSTED OBSERVED change vs. initial scatterplot
+p8 <- p4 + aes(x = log_init_obs, y = log_change_obs_adj)
+
+plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8)
+
+plots1panel <- ggpubr::ggarrange(plotlist = plots1, nrow = 2, ncol = 4, labels = "AUTO")
 
 plots1panel
 ```
@@ -141,7 +247,7 @@ plots1panel
 ## 1.2: Variance in changes mostly due to measurement error
 ### v_pop == v_err >>> v_ind
 
-```{r s2}
+```{r s1.2, fig.width = 10, fig.height = 5}
 # Set variances
 v_pop <- 1
 v_ind <- 0.001
@@ -168,10 +274,19 @@ df2 <- df2 %>% mutate(
 )
   
 # Update list of plots with scenario 2 data
+# ## Compute plot limit values
+max_abs_initfinal <- df2 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df2 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
 plots2 <- map(plots1, ~ .x %+% df2)
 
 # Create multipanel plot
-plots2panel <- ggpubr::ggarrange(plotlist = plots2, nrow = 2, ncol = 3, labels = "AUTO")
+plots2panel <- ggpubr::ggarrange(plotlist = plots2, nrow = 2, ncol = 4, labels = "AUTO")
 
 # Display plots
 plots2panel
@@ -182,7 +297,7 @@ plots2panel
 ## 1.3: Variance in changes mostly due to individual differences 
 ### (v_pop == v_ind >>> v_err)
 
-```{r s3}
+```{r s1.3, fig.width = 10, fig.height = 5}
 # Set variances
 v_pop <- 1
 v_ind <- 1
@@ -209,10 +324,19 @@ df3 <- df3 %>% mutate(
 )
   
 # Update list of plots with scenario 3 data
+# ## Compute plot limit values
+max_abs_initfinal <- df3 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df3 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
 plots3 <- map(plots1, ~ .x %+% df3)
 
 # Create multipanel plot
-plots3panel <- ggpubr::ggarrange(plotlist = plots3, nrow = 2, ncol = 3, labels = "AUTO")
+plots3panel <- ggpubr::ggarrange(plotlist = plots3, nrow = 2, ncol = 4, labels = "AUTO")
 
 # Display plots
 plots3panel
@@ -225,7 +349,7 @@ plots3panel
 ## 2.1: Equal variances 
 ### v_pop == v_ind == v_err
 
-```{r s4}
+```{r s2.1, fig.width = 10, fig.height = 5}
 # Set variances
 v_pop <- 1
 v_ind <- 1
@@ -254,11 +378,20 @@ df4 <- df4 %>% mutate(
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
   
-# Update list of plots with scenario 3 data
+# Update list of plots with scenario 4 data
+# ## Compute plot limit values
+max_abs_initfinal <- df4 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df4 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
 plots4 <- map(plots1, ~ .x %+% df4)
 
 # Create multipanel plot
-plots4panel <- ggpubr::ggarrange(plotlist = plots4, nrow = 2, ncol = 3, labels = "AUTO")
+plots4panel <- ggpubr::ggarrange(plotlist = plots4, nrow = 2, ncol = 4, labels = "AUTO")
 
 # Display plots
 plots4panel
@@ -269,7 +402,7 @@ plots4panel
 ## 2.2: Variance in changes mostly due to measurement error 
 ### v_pop == v_err >>> v_ind
 
-```{r s5}
+```{r s2.2, fig.width = 10, fig.height = 5}
 # Set variances
 v_pop <- 1
 v_ind <- 0.001
@@ -298,11 +431,20 @@ df5 <- df5 %>% mutate(
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
   
-# Update list of plots with scenario 3 data
+# Update list of plots with scenario 5 data
+# ## Compute plot limit values
+max_abs_initfinal <- df5 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df5 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
 plots5 <- map(plots1, ~ .x %+% df5)
 
 # Create multipanel plot
-plots5panel <- ggpubr::ggarrange(plotlist = plots5, nrow = 2, ncol = 3, labels = "AUTO")
+plots5panel <- ggpubr::ggarrange(plotlist = plots5, nrow = 2, ncol = 4, labels = "AUTO")
 
 # Display plots
 plots5panel
@@ -313,11 +455,11 @@ plots5panel
 ## 2.3: Variance in changes mostly due to individual differences 
 ### v_pop == v_ind >>> v_err
 
-```{r s6}
+```{r s2.3, fig.width = 10, fig.height = 5}
 # Set variances
-v_pop <- 1
-v_ind <- 1
-v_err <- 0.001
+v_pop <- 1        # 1
+v_ind <- 1        # 1
+v_err <- 0.001    # 0.001
 
 # Set strength of true relationship
 b <- -0.2
@@ -342,11 +484,20 @@ df6 <- df6 %>% mutate(
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
   
-# Update list of plots with scenario 3 data
+# Update list of plots with scenario 6 data
+# ## Compute plot limit values
+max_abs_initfinal <- df6 %>%
+  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
+max_abs_initchange <- df6 %>%
+  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+  pull(max_abs)
 plots6 <- map(plots1, ~ .x %+% df6)
 
 # Create multipanel plot
-plots6panel <- ggpubr::ggarrange(plotlist = plots6, nrow = 2, ncol = 3, labels = "AUTO")
+plots6panel <- ggpubr::ggarrange(plotlist = plots6, nrow = 2, ncol = 4, labels = "AUTO")
 
 # Display plots
 plots6panel
@@ -417,7 +568,7 @@ results %>%
   filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
   ggplot(aes(x = v_ind, y = v_err)) +
     geom_point(aes(shape = cor.type, size = cor.type, color = outcome), alpha = 0.5) +
-    facet_wrap(~b, ncol = 5) +
+    facet_wrap(~b, ncol = 5, labeller = labeller(b = function(x) paste0("b = ", x))) +
     scale_color_manual(values = c("forestgreen", "red", "blue", "gray")) +
     scale_shape_manual(values = c(16, 15)) +
     scale_size_manual(values = c(4,6))
@@ -438,24 +589,30 @@ results %>%
 ```{r}
 slopes <- filter(results, cor.type %in% c("adj.b", "obs.b"))
 
+# Measurement error variance
 ggplot(slopes, aes(x = b, y = estimate)) +
   geom_jitter(aes(color = v_err), width = 0.05, height = 0, alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   facet_wrap(~cor.type) +
   geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
 
+# Individual response variance
 ggplot(slopes, aes(x = b, y = estimate)) +
   geom_jitter(aes(color = v_ind), width = 0.05, height = 0, alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   facet_wrap(~cor.type) +
   geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
 
+# Error/response variance
 ggplot(slopes, aes(x = b, y = estimate)) +
-  geom_jitter(aes(color = log(v_err/v_ind)), width = 0.05, height = 0, alpha = 0.2) +
+  geom_jitter(aes(color = log(v_err/v_ind), shape = p.value < 0.01), 
+              width = 0.05, height = 0, alpha = 0.2, size = 3) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   facet_wrap(~cor.type) +
-  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
-  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
+  scale_color_gradient2(low = "#2b83ba", mid = "#ffffbf", high = "#d7191c", midpoint = 0) +
+  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted") +
+  labs(x = "True slope", y = "Observed slope") +
+  theme_minimal()
 ```
 
 
@@ -510,12 +667,13 @@ pdam %>%
 ### Observed and adjusted relationships in *P. damicornis* study
 ```{r pdam_plots, fig.height = 2.5}
 pdam_plots <- list(
-  p4 %+% pdam + xlim(-4.1, -1) + ylim(-4.1, -1),
-  p5 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5),
-  p6 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5)
+  p5 %+% pdam,
+  p6 %+% pdam + xlim(-4.1, -1) + ylim(-4.1, -1),
+  p7 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5),
+  p8 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5)
 )
 
-ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 3, labels = "AUTO")
+ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 4, labels = "AUTO")
 ```
 
 * Observed relationship is negative (interpreted as density-dependent bleaching in Cunning and Baker 2013)
@@ -575,12 +733,13 @@ mill <- mill %>% mutate(
 ```{r mill_plots, fig.height = 2.5}
 ### Observed and adjusted relationships in *A. cervicornis* study
 mill_plots <- list(
-  p4 %+% mill + xlim(0.5, 4.5) + ylim(-0.5, 5),
-  p5 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8),
-  p6 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8)
+  p5 %+% mill,
+  p6 %+% mill + xlim(0.5, 4.5) + ylim(-0.5, 5),
+  p7 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8),
+  p8 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8)
 )
 
-ggpubr::ggarrange(plotlist = mill_plots, nrow = 1, ncol = 3, labels = "AUTO")
+ggpubr::ggarrange(plotlist = mill_plots, nrow = 1, ncol = 4, labels = "AUTO")
 ```
 
 ### Which simulations produce the observed relationship from *A. cervicornis* study?
