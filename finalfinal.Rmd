@@ -107,21 +107,25 @@ chiolero_plot <- function(df, init_var, final_var, label = NULL) {
   init_name <- as_label(init_sym)
   final_name <- as_label(final_sym)
 
+  # Get min and max across both variables
+  y_range <- range(c(pull(df, !!init_sym), pull(df, !!final_sym)), na.rm = TRUE)
+
   ggplot(df, aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
     geom_segment(alpha = 0.1) +
-    geom_point(aes(x = 1, y = !!init_sym), size = 1.5) +
-    geom_point(aes(x = 2, y = !!final_sym), size = 1.5) +
-    scale_y_continuous(limits = c(-max_abs_initfinal, max_abs_initfinal)) +
+    geom_point(aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2) +
+    geom_point(aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2) +
+    scale_y_continuous(limits = y_range) +
     scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
                        expand = c(0.15, 0.15)) +
     labs(x = "timepoint", y = "value") +
     stat_var_test(
       mapping = aes(x = !!init_sym, y = !!final_sym, group = 1),
-      label.x = 1.5,
-      label.y = max_abs_initfinal,
-      vjust = 1
+      label.x = -Inf,
+      label.y = Inf,
+      hjust = -0.1, vjust = 1.5
     )
 }
+
 ```
 
 
@@ -194,12 +198,8 @@ p1 <- chiolero_plot(df1, log_init_true, log_final_true)
 p2 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
   geom_point(alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  stat_cor(label.x = -max_abs_initfinal, label.y = max_abs_initfinal) +
+  stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
   geom_smooth(method = "lm", se = FALSE) +
-  #stat_regline_equation(aes(label = ..eq.label..),
-  #                     label.y.npc = 0.1, output.type = "text") +
-  # stat_var_test(label.x = max_abs_initfinal, label.y = -max_abs_initfinal, 
-  #               hjust = 1, vjust = 0) +
   coord_fixed(xlim = c(-max_abs_initfinal, max_abs_initfinal), 
               ylim = c(-max_abs_initfinal, max_abs_initfinal))
 
@@ -207,12 +207,10 @@ p2 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
 p3 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
   geom_point(alpha = 0.2) +
   geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
-  stat_cor(label.x = -max_abs_initchange, label.y = max_abs_initchange) +
+  stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
   geom_smooth(method = "lm", se = FALSE) +
-  #stat_regline_equation(aes(label = ..eq.label..),
-  #                     label.y.npc = 0.1, output.type = "text") +
-    coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange), 
-                ylim = c(-max_abs_initchange, max_abs_initchange))
+  coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange), 
+              ylim = c(-max_abs_initchange, max_abs_initchange))
 
 # Plot 4: ADJUSTED TRUE change vs. initial scatterplot
 p4 <- p3 + aes(x = log_init_true, y = log_change_true_adj)
@@ -274,15 +272,6 @@ df2 <- df2 %>% mutate(
 )
   
 # Update list of plots with scenario 2 data
-# ## Compute plot limit values
-max_abs_initfinal <- df2 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df2 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
 plots2 <- map(plots1, ~ .x %+% df2)
 
 # Create multipanel plot
@@ -324,15 +313,6 @@ df3 <- df3 %>% mutate(
 )
   
 # Update list of plots with scenario 3 data
-# ## Compute plot limit values
-max_abs_initfinal <- df3 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df3 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
 plots3 <- map(plots1, ~ .x %+% df3)
 
 # Create multipanel plot
@@ -379,15 +359,6 @@ df4 <- df4 %>% mutate(
 )
   
 # Update list of plots with scenario 4 data
-# ## Compute plot limit values
-max_abs_initfinal <- df4 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df4 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
 plots4 <- map(plots1, ~ .x %+% df4)
 
 # Create multipanel plot
@@ -432,15 +403,6 @@ df5 <- df5 %>% mutate(
 )
   
 # Update list of plots with scenario 5 data
-# ## Compute plot limit values
-max_abs_initfinal <- df5 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df5 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
 plots5 <- map(plots1, ~ .x %+% df5)
 
 # Create multipanel plot
@@ -485,15 +447,6 @@ df6 <- df6 %>% mutate(
 )
   
 # Update list of plots with scenario 6 data
-# ## Compute plot limit values
-max_abs_initfinal <- df6 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df6 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
 plots6 <- map(plots1, ~ .x %+% df6)
 
 # Create multipanel plot
@@ -514,7 +467,7 @@ pars <- expand_grid(
   v_pop = 1,
   v_ind = seq(1e-3, 1, 0.1),
   v_err = seq(1e-3, 1, 0.1),
-  b = round(seq(-1.4, 1.4, by = 0.2), 1)
+  b = c(-1, -0.5, -0.2, -0.1, 0, 0.1, 0.2, 0.5, 1)
 )
 
 test.cors <- function(v_pop, v_ind, v_err, b) {
@@ -561,30 +514,40 @@ results <- pmap_dfr(pars, test.cors) %>%
     p.value > 0.01 & b != 0 ~ "type2 - misses effect that does exist",
     p.value < 0.01 & sign(estimate) != sign(b) ~ "type1 - detects effect that does not exist",
     p.value < 0.01 & sign(estimate) == sign(b) ~ "correct"
+  )) %>%
+  mutate(dir = case_when(
+    p.value > 0.01 ~ "none",
+    p.value < 0.01 & sign(estimate) < 0 ~ "neg",
+    p.value < 0.01 & sign(estimate) > 0 ~ "pos"
   ))
 
 
-results %>% 
+results %>%
   filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
   ggplot(aes(x = v_ind, y = v_err)) +
-    geom_point(aes(shape = cor.type, size = cor.type, color = outcome), alpha = 0.5) +
-    facet_wrap(~b, ncol = 5, labeller = labeller(b = function(x) paste0("b = ", x))) +
-    scale_color_manual(values = c("forestgreen", "red", "blue", "gray")) +
-    scale_shape_manual(values = c(16, 15)) +
-    scale_size_manual(values = c(4,6))
+    geom_point(aes(shape = dir, color = outcome), alpha = 1, size = 2) +
+    facet_grid(cor.type ~ b, labeller = labeller(b = function(x) paste0("b = ", x))) +
+    scale_shape_manual(values = c(25, 4, 24), labels = c("Negative", "Zero", "Positive")) +
+    scale_color_manual(values = c("#0072B2", "#E69F00", "#999999")) +
+    scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+    scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+    guides(shape = guide_legend(title = "Effect sign"),
+           color = guide_legend(title = "Outcome")) +
+  coord_fixed(1) +
+  theme(legend.position = "bottom")
 ```
 
 * **When true relationship is zero:**     
-  + Observed relationship is always *spuriously negative* due to regression to the mean/mathematical coupling    
-  + Corrected relationship is *spuriously positive* when v_ind > v_err     
-  + Corrected relationship is *correct* when v_err > v_ind     
+  + Observed correlation is nearly always *spuriously negative* due to regression to the mean/mathematical coupling unless measurement error is very low (≤0.1ish)
+  + Adjusted relationship is *spuriously positive* when v_ind > v_err     
+  + Adjusted relationship is *correct* when v_err > v_ind     
 * **When true relationship is negative:**     
   + Observed relationship is always negative (*correct*), but *spuriously overestimated*     
-  + Corrected relationship is *spuriously positive* when v_ind > v_err     
-  + Corrected relationship is *spuriously zero* when v_err > v_ind (and most always as b decreases)     
+  + Adjusted relationship is *spuriously positive* for v_ind > v_err     
+  + Adjusted relationship is *spuriously zero* when v_err > v_ind (and most always as b decreases)     
 * **When true relationship is positive:**      
   + Observed relationship is *spuriously negative* when v_err is > 0.1-0.5 (increasing as b increases), *spuriously zero* at intermediate v_err values, but *correct* when v_err is very low  
-  + Corrected relationship is positive in most cases (*correct*), but probably *spuriously overestimated*
+  + Adjusted relationship is positive in most cases (*correct*), but probably *spuriously overestimated*
 
 ```{r}
 slopes <- filter(results, cor.type %in% c("adj.b", "obs.b"))
@@ -654,23 +617,32 @@ pdam <- pdam %>% mutate(
 )
 
 save(pdam, file = "pdam.RData")
-var(pdam$log_init_obs)
-var(pdam$log_final_obs)
-
-pdam %>%
-  pivot_longer(c(log_init_obs, log_final_obs)) %>%
-  ggplot(aes(x = name, y = value, group = factor(colony), color = factor(colony))) +
-  geom_point() +
-  geom_line()
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
 ```{r pdam_plots, fig.height = 2.5}
+# ## Compute new plot limit values
+pdam_initfinal <- pdam %>%
+  select(log_init_obs, log_final_obs) %>%
+  summarise(
+    min = min(c_across(everything()), na.rm = TRUE),
+    max = max(c_across(everything()), na.rm = TRUE)
+  )
+pdam_initchange <- pdam %>%
+  select(log_change_obs) %>%
+  summarise(
+    min = min(c_across(everything()), na.rm = TRUE),
+    max = max(c_across(everything()), na.rm = TRUE)
+  )
+
 pdam_plots <- list(
-  p5 %+% pdam,
-  p6 %+% pdam + xlim(-4.1, -1) + ylim(-4.1, -1),
-  p7 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5),
-  p8 %+% pdam + xlim(-3.25, -1) + ylim(-2.5, 0.5)
+  chiolero_plot(pdam, log_init_obs, log_final_obs),
+  p6 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
+                            ylim = c(pdam_initfinal$min, pdam_initfinal$max)),
+  p7 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
+                            ylim = c(pdam_initchange$min, pdam_initchange$max)),
+  p8 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
+                            ylim = c(pdam_initchange$min, pdam_initchange$max))
 )
 
 ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 4, labels = "AUTO")
@@ -701,6 +673,9 @@ ggplot(b_summ, aes(x = v_ind, y = v_err, shape = outcome == "correct", color = o
   geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
   xlim(0, 1) +
   ylim(0, 1)
+
+pdam
+var(pdam$log_init_obs)
 ```
 
 * The simulations where the *P. damicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < 0.3-0.4.     
@@ -731,14 +706,31 @@ mill <- mill %>% mutate(
 
 ### Observed and adjusted relationships in *A. cervicornis* study
 ```{r mill_plots, fig.height = 2.5}
+# ## Compute new plot limit values
+mill_initfinal <- mill %>%
+  select(log_init_obs, log_final_obs) %>%
+  summarise(
+    min = min(c_across(everything()), na.rm = TRUE),
+    max = max(c_across(everything()), na.rm = TRUE)
+  )
+mill_initchange <- mill %>%
+  select(log_change_obs) %>%
+  summarise(
+    min = min(c_across(everything()), na.rm = TRUE),
+    max = max(c_across(everything()), na.rm = TRUE)
+  )
+
 ### Observed and adjusted relationships in *A. cervicornis* study
 mill_plots <- list(
-  p5 %+% mill,
-  p6 %+% mill + xlim(0.5, 4.5) + ylim(-0.5, 5),
-  p7 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8),
-  p8 %+% mill + xlim(0.5, 4.5) + ylim(-2.2, 1.8)
+  chiolero_plot(mill, log_init_obs, log_final_obs),
+  p6 %+% mill + coord_fixed(xlim = c(mill_initfinal$min, mill_initfinal$max),
+                            ylim = c(mill_initfinal$min, mill_initfinal$max)),
+  p7 %+% mill + coord_fixed(xlim = c(mill_initfinal$min, mill_initfinal$max),
+                            ylim = c(mill_initchange$min, mill_initchange$max)),
+  p8 %+% mill + coord_fixed(xlim = c(mill_initfinal$min, mill_initfinal$max),
+                            ylim = c(mill_initchange$min, mill_initchange$max))
 )
-
+  
 ggpubr::ggarrange(plotlist = mill_plots, nrow = 1, ncol = 4, labels = "AUTO")
 ```
 
