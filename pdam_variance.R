@@ -91,8 +91,33 @@ v_tot <- var(summ3$adj_logSH)
 v_pop <- v_tot - v_err
 
 # v_err relative to v_pop
-v_err / v_pop
+v_err_rel <- v_err / v_pop
 
 
 
 
+
+library(boot)
+
+# Your difference vector from technical replicates
+diffs <- summ %>%
+  group_by(colony, date) %>%
+  summarize(diff = diff(logSH)) %>%
+  pull(diff)
+
+# Bootstrap function: calculate v_err from diff vector
+boot_fun <- function(data, indices) {
+  v_diff <- var(data[indices])
+  return(v_diff / 4)  # divide by 4 as you do in your code
+}
+
+# Bootstrap 1000 replicates
+set.seed(123)
+boot_out <- boot(diffs, statistic = boot_fun, R = 1000)
+
+# Get percentile CI
+ci <- boot.ci(boot_out, type = "perc")
+v_err_lower <- ci$percent[4]
+v_err_upper <- ci$percent[5]
+v_err_lower_rel <- v_err_lower / (v_tot - v_err_lower)
+v_err_upper_rel <- v_err_upper / (v_tot - v_err_upper)

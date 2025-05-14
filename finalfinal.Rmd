@@ -482,10 +482,12 @@ test.cors <- function(v_pop, v_ind, v_err, b) {
     log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
     log_change_obs = log_final_obs - log_init_obs   # Observed change
   )
+  
   # Apply Kelly Price correction to observed values
   df <- df %>% mutate(
     log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
   )
+  
   # Get true, observed, and adjusted correlations between change and initial
   bind_rows(.id = "cor.type",
         obs.b = tidy(lm(log_change_obs ~ scale(log_init_obs), data = df))[2,],
@@ -627,66 +629,102 @@ ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 4, labels = "AUTO")
 
 ### Which simulations produce the observed relationship from *P. damicornis* study?
 ```{r pdam_scenarios}
+# Which combinations of b, v_ind, and v_err could plausibly produce both:
+# the observed slope of change vs. initial
+# the observed variance in change?
+# You do this by simulating datasets across a grid, then keeping only those combinations where:
+# 
+# The observed slope in the simulated dataset matches the observed slope in your real data
+# The predicted variance in change (b^2 + v_ind + 2*v_err) matches the variance in your real data
+# This filtering step is what makes your inference about b_true and v_ind data-driven, rather than just based on slope matching.
+# Then we look at the TRUE underlying relationship b in the set of plausible simulations.
 
-# What is *b* from Pdam dataset (change in response per 1 SD change in predictor)
-pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)
-pdam_rawb <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[[2]]
-pdam_b <- coef(pdam_mod)[[2]]      # -0.37
-pdam_ci <- confint(pdam_mod)[2,]
-### SHOULD THIS BE SCALED OR NOT? it prob should
+# Slope and variance estimation from Pdam dataset 
+pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)  # scaled to unit variance to match simulations
+b_obs <- coef(pdam_mod)[[2]]      # -0.37 (observed slope)
+b_obs_ci <- confint(pdam_mod)[2,]   # 95% confidence interval for observed slope
+# Variance in initial observed trait values and observed individual changes (on absolute/trait scale)
+var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+var_y_abs <- var(pdam$log_change_obs, na.rm = TRUE)
+
+# Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
+v_err_abs <- 0.0231325     # on trait scale (logSH)
+v_pop_abs <- var_x_abs - v_err_abs       # Initial true trait value variance (subtract measurement error var)
+v_err_rel <- v_err_abs / v_pop_abs       # Measurement error variance on relative scale
+                                         # i.e., relative to v_pop since v_pop standardized to 1 in simulations
+
+# Estimate v_ind from data based on known v_err and observed variance in change.
+# b_obs is from standardized log_init_obs, so we multiply by var_x_abs to put it back on the unscaled (absolute) scale
+v_ind_est_abs <- var_y_abs - (b_obs^2 * var_x_abs) - 2 * v_err_abs
+v_ind_est_rel <- v_ind_est_abs / v_pop_abs
+# 1.57 rel to v_pop. let's search 0 to 4 in simulations just to include very broad search.
+
+# Observed variance in change, rescaled to simulation scale (v_pop = 1)
+var_y_rel <- var_y_abs / v_pop_abs
+# Bootstrap confidence interval for variance in observed change over time
+boot_fun <- function(data, indices) {
+  d <- data[indices, ]
+  var(d$log_change_obs, na.rm = TRUE)
+}
+set.seed(123)
+boot_out <- boot(pdam, statistic = boot_fun, R = 1000)
+boot_ci <- boot.ci(boot_out, type = "perc")
+
+# Convert to relative scale
+var_y_abs_low  <- boot_ci$percent[4]
+var_y_abs_high <- boot_ci$percent[5]
+
+var_y_rel_low  <- var_y_abs_low  / v_pop_abs
+var_y_rel_high <- var_y_abs_high / v_pop_abs
 
 
-# Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
-b_summ <- results %>%
-  filter(cor.type == "obs.b",
-         estimate > pdam_ci[1],
-         estimate < pdam_ci[2])
 
-# Plot which of the scenarios producing this b value reflect a correct (true) negative relationship, or not
-ggplot(b_summ, aes(
-  x = v_ind, y = v_err, 
-  shape = outcome == "correct", color = outcome == "correct")
-  ) +
-  geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
-  xlim(0, 1) +
-  ylim(0, 1)
-```
 
-* The simulations where the *P. damicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < 0.3-0.4.     
-* The simulations where the *P. damicornis* observed outcome is NOT correct (i.e., reflects a spurious relationship) are when v_err > 0.3-0.4.
 
-## sim with pdam pars?
-```{r}
+
+
+
+
+# Run new simulations with known Pdam v_err to identify all possible true relationships given observed slope
 pdam_pars <- expand_grid(
-  v_pop = 1,               # Set trait variance to 1 (relative)
-  v_ind = seq(0, 1, 0.01),  # Test all unknown v_ind
-  v_err = 0.1438129,       # Actual pdam v_err (relative to v_pop)
-  b = seq(-1, 1, 0.01)     # Test all unknown true relationships
+  v_pop = 1,                            # Set trait variance to 1 (relative)
+  v_ind = seq(0, 4, 0.1),               # Test broad v_ind (relative to v_pop = 1; Pdam estimate = 1.57)
+  v_err = seq(0.06, 0.27, 0.01),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
+  b = seq(-1, 1, 0.01)                  # Test all unknown true relationships
 )
 
-# CAN WE CONSTRAIN V_IND BASED ON V_ERR? (since we have actual changes?)
+
 
 # Run the function on all parameter combinations and bind results
 library(future)
 library(furrr)
 plan(multisession)
-pdam_results <- future_pmap_dfr(
+pdam_sim_all <- future_pmap_dfr(
   pdam_pars,
   test.cors,
   .options = furrr_options(seed = TRUE, packages = "broom")  # ensures broom is loaded on each worker
 ) %>%
   select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value)
 
-pdam_actual <- pdam_results %>%
+# Get all possible true b simulations that could produce pdam observed b [±95CI]
+#tolerance <- var_y_rel * 0.1
+pdam_sim_possible <- pdam_sim_all %>%
   pivot_wider(names_from = cor.type, values_from = c(estimate, p.value)) %>%
-  filter(estimate_obs.b > pdam_ci[1], estimate_obs.b < pdam_ci[2])
+  mutate(
+    # Keep only simulations where:
+    # 1. Simulated observed slope (estimate_obs.b) lies within the 95% CI from real data
+    slope_match = estimate_obs.b > b_obs_ci[1] & 
+                  estimate_obs.b < b_obs_ci[2],
+    # 2. Simulated total variance in change (b^2 + v_ind + 2 * v_err) lies within the bootstrapped 95% CI of var_y_rel
+    var_match = (v_ind + b^2 + 2 * v_err >= var_y_rel_low) & 
+                (v_ind + b^2 + 2 * v_err <= var_y_rel_high)
+  ) %>%
+  filter(slope_match, var_match)
 
-summary(pdam_actual$b)
-hist(pdam_actual$b)
-summary(pdam_actual$estimate_adj.b)
-hist(pdam_actual$estimate_adj.b)
 
-pdam_actual %>%
+
+# Plot true and KP-adjusted slopes for possible scenarios consistent with Pdam study
+pdam_sim_possible %>%
   select(v_ind, b, estimate_obs.b, estimate_adj.b) %>%
   pivot_longer(cols = c(b, estimate_obs.b, estimate_adj.b)) %>%
   ggplot(aes(x = value)) +
@@ -694,10 +732,19 @@ pdam_actual %>%
                  binwidth = 0.01, alpha = 0.5)
 
 
-mean(pdam_actual$b)     # likely true slope from simulations given observed
-quantile(pdam_actual$b, c(0.025, 0.975))
+mean(pdam_sim_possible$b)     # likely true slope from simulations given observed
+quantile(pdam_sim_possible$b, c(0.025, 0.975))
 pdam_b    # observed slope is more negative than likely true slope
 pdam_ci
+
+# # Heatmap of most likely parameter combos
+# ggplot(pdam_sim_possible, aes(x = b, y = v_ind)) +
+#   geom_bin2d(binwidth = c(0.02, 0.1)) +
+#   scale_fill_viridis_c(option = "C") +
+#   labs(
+#     title = "Parameter combinations consistent with observed slope and variance",
+#     x = "True slope (b)", y = "True individual variance (v_ind)"
+#   )
 ```
 
 
