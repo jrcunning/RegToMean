@@ -549,44 +549,17 @@ results %>%
   + Observed relationship is *spuriously negative* when v_err is > 0.1-0.5 (increasing as b increases), *spuriously zero* at intermediate v_err values, but *correct* when v_err is very low  
   + Adjusted relationship is positive in most cases (*correct*), but probably *spuriously overestimated*
 
-```{r}
-slopes <- filter(results, cor.type %in% c("adj.b", "obs.b"))
-
-# Measurement error variance
-ggplot(slopes, aes(x = b, y = estimate)) +
-  geom_jitter(aes(color = v_err), width = 0.05, height = 0, alpha = 0.2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  facet_wrap(~cor.type) +
-  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
-
-# Individual response variance
-ggplot(slopes, aes(x = b, y = estimate)) +
-  geom_jitter(aes(color = v_ind), width = 0.05, height = 0, alpha = 0.2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  facet_wrap(~cor.type) +
-  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted")
-
-# Error/response variance
-ggplot(slopes, aes(x = b, y = estimate)) +
-  geom_jitter(aes(color = log(v_err/v_ind), shape = p.value < 0.01), 
-              width = 0.05, height = 0, alpha = 0.2, size = 3) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  facet_wrap(~cor.type) +
-  scale_color_gradient2(low = "#2b83ba", mid = "#ffffbf", high = "#d7191c", midpoint = 0) +
-  geom_hline(yintercept = c(-0.5096655, -0.2335527), linetype = "dotted") +
-  labs(x = "True slope", y = "Observed slope") +
-  theme_minimal()
-```
-
 
 # Dataset 1: *P. damicornis* symbiont changes
 
-#### from Cunning and Baker 2013
+from Cunning and Baker 2013
 
 ### Import and tidy data
 ```{r pdam_import_tidy}
 # Import and tidy Pdam data
 pdam0 <- read_csv("PdamRbleaching.csv")
+pdam0 %>%
+  filter(colony == "704")
 
 pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
@@ -659,31 +632,80 @@ ggpubr::ggarrange(plotlist = pdam_plots, nrow = 1, ncol = 4, labels = "AUTO")
 pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)
 pdam_rawb <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[[2]]
 pdam_b <- coef(pdam_mod)[[2]]      # -0.37
-pdam_ci <- confint(pdam_mod)
+pdam_ci <- confint(pdam_mod)[2,]
 ### SHOULD THIS BE SCALED OR NOT? it prob should
 
 
 # Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
 b_summ <- results %>%
   filter(cor.type == "obs.b",
-         abs(estimate - pdam_b) < 0.1)
+         estimate > pdam_ci[1],
+         estimate < pdam_ci[2])
 
 # Plot which of the scenarios producing this b value reflect a correct (true) negative relationship, or not
-ggplot(b_summ, aes(x = v_ind, y = v_err, shape = outcome == "correct", color = outcome == "correct")) +
+ggplot(b_summ, aes(
+  x = v_ind, y = v_err, 
+  shape = outcome == "correct", color = outcome == "correct")
+  ) +
   geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
   xlim(0, 1) +
   ylim(0, 1)
-
-pdam
-var(pdam$log_init_obs)
 ```
 
 * The simulations where the *P. damicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < 0.3-0.4.     
 * The simulations where the *P. damicornis* observed outcome is NOT correct (i.e., reflects a spurious relationship) are when v_err > 0.3-0.4.
 
+## sim with pdam pars?
+```{r}
+pdam_pars <- expand_grid(
+  v_pop = 1,               # Set trait variance to 1 (relative)
+  v_ind = seq(0, 1, 0.01),  # Test all unknown v_ind
+  v_err = 0.1438129,       # Actual pdam v_err (relative to v_pop)
+  b = seq(-1, 1, 0.01)     # Test all unknown true relationships
+)
+
+# CAN WE CONSTRAIN V_IND BASED ON V_ERR? (since we have actual changes?)
+
+# Run the function on all parameter combinations and bind results
+library(future)
+library(furrr)
+plan(multisession)
+pdam_results <- future_pmap_dfr(
+  pdam_pars,
+  test.cors,
+  .options = furrr_options(seed = TRUE, packages = "broom")  # ensures broom is loaded on each worker
+) %>%
+  select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value)
+
+pdam_actual <- pdam_results %>%
+  pivot_wider(names_from = cor.type, values_from = c(estimate, p.value)) %>%
+  filter(estimate_obs.b > pdam_ci[1], estimate_obs.b < pdam_ci[2])
+
+summary(pdam_actual$b)
+hist(pdam_actual$b)
+summary(pdam_actual$estimate_adj.b)
+hist(pdam_actual$estimate_adj.b)
+
+pdam_actual %>%
+  select(v_ind, b, estimate_obs.b, estimate_adj.b) %>%
+  pivot_longer(cols = c(b, estimate_obs.b, estimate_adj.b)) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(aes(fill = name), position = "identity", 
+                 binwidth = 0.01, alpha = 0.5)
+
+
+mean(pdam_actual$b)     # likely true slope from simulations given observed
+quantile(pdam_actual$b, c(0.025, 0.975))
+pdam_b    # observed slope is more negative than likely true slope
+pdam_ci
+```
+
+
+
+
 # Dataset 2: *A. cervicornis* growth
 
-#### from Million et al.
+from Million et al.
 
 ### Import and tidy data
 ```{r mill_import_tidy}
