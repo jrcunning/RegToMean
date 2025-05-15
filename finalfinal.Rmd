@@ -11,7 +11,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE)
 ```
 
 ```{r libraries, echo = FALSE}
@@ -462,11 +462,11 @@ plots6panel
 
 ### Vary the true relationship *b* and variances *v_ind* and *v_err* to identify when the observed or Kelly Price adjusted relationship recovers the true relationship *b*
 
-```{r parsim, fig.height = 7, fig.width = 10}
+```{r parsim, fig.height = 5, fig.width = 10}
 pars <- expand_grid(
   v_pop = 1,
-  v_ind = seq(1e-3, 1, 0.1),
-  v_err = seq(1e-3, 1, 0.1),
+  v_ind = seq(0, 3, 0.25),
+  v_err = seq(0, 0.5, 0.05),
   b = c(-1, -0.5, -0.2, -0.1, 0, 0.1, 0.2, 0.5, 1)
 )
 
@@ -526,17 +526,23 @@ results <- pmap_dfr(pars, test.cors) %>%
 
 results %>%
   filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
-  ggplot(aes(x = v_ind, y = v_err)) +
-    geom_point(aes(shape = dir, color = outcome), alpha = 1, size = 2) +
+  ggplot(aes(y = v_err, x = v_ind)) +
+    geom_point(aes(shape = dir, color = outcome, fill = outcome), size = 2) +
     facet_grid(cor.type ~ b, labeller = labeller(b = function(x) paste0("b = ", x))) +
-    scale_shape_manual(values = c(25, 4, 24), labels = c("Negative", "Zero", "Positive")) +
+    scale_shape_manual(values = c(25, 22, 24), labels = c("Negative", "Zero", "Positive")) +
     scale_color_manual(values = c("#0072B2", "#E69F00", "#999999")) +
-    scale_x_continuous(breaks = seq(0, 1, 0.2)) +
-    scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+    scale_fill_manual(values = c("#0072B2", "#E69F00", "#999999")) +
+    scale_x_continuous(breaks = seq(0, 4, 0.5)) +
+    scale_y_continuous(breaks = seq(0, 0.5, 0.1)) +
     guides(shape = guide_legend(title = "Effect sign"),
            color = guide_legend(title = "Outcome")) +
-  coord_fixed(1) +
-  theme(legend.position = "bottom")
+  theme_bw() +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+
+
+
 ```
 
 * **When true relationship is zero:**     
@@ -560,8 +566,6 @@ from Cunning and Baker 2013
 ```{r pdam_import_tidy}
 # Import and tidy Pdam data
 pdam0 <- read_csv("PdamRbleaching.csv")
-pdam0 %>%
-  filter(colony == "704")
 
 pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
@@ -595,7 +599,7 @@ save(pdam, file = "pdam.RData")
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
-```{r pdam_plots, fig.height = 2.5}
+```{r pdam_plots, fig.width = 10, fig.height = 5}
 # ## Compute new plot limit values
 pdam_initfinal <- pdam %>%
   select(log_init_obs, log_final_obs) %>%
@@ -662,6 +666,7 @@ v_ind_est_rel <- v_ind_est_abs / v_pop_abs
 # Observed variance in change, rescaled to simulation scale (v_pop = 1)
 var_y_rel <- var_y_abs / v_pop_abs
 # Bootstrap confidence interval for variance in observed change over time
+library(boot)
 boot_fun <- function(data, indices) {
   d <- data[indices, ]
   var(d$log_change_obs, na.rm = TRUE)
@@ -734,10 +739,10 @@ pdam_sim_possible %>%
 
 mean(pdam_sim_possible$b)     # likely true slope from simulations given observed
 quantile(pdam_sim_possible$b, c(0.025, 0.975))
-pdam_b    # observed slope is more negative than likely true slope
-pdam_ci
+b_obs    # observed slope is more negative than likely true slope
+b_obs_ci
 
-# # Heatmap of most likely parameter combos
+# # # Heatmap of most likely parameter combos
 # ggplot(pdam_sim_possible, aes(x = b, y = v_ind)) +
 #   geom_bin2d(binwidth = c(0.02, 0.1)) +
 #   scale_fill_viridis_c(option = "C") +
@@ -774,7 +779,7 @@ mill <- mill %>% mutate(
 ```
 
 ### Observed and adjusted relationships in *A. cervicornis* study
-```{r mill_plots, fig.height = 2.5}
+```{r mill_plots, fig.width = 10, fig.height = 5}
 # ## Compute new plot limit values
 mill_initfinal <- mill %>%
   select(log_init_obs, log_final_obs) %>%
@@ -803,25 +808,123 @@ mill_plots <- list(
 ggpubr::ggarrange(plotlist = mill_plots, nrow = 1, ncol = 4, labels = "AUTO")
 ```
 
-### Which simulations produce the observed relationship from *A. cervicornis* study?
+
+### Which simulations produce the observed relationship from *P. damicornis* study?
 ```{r mill_scenarios}
-# What is *b* from Acer dataset (change in response per 1 SD change in predictor)
-mill_mod <- lm(log_change_obs ~ scale(log_init_obs), data = mill)
-mill_b <- coef(mill_mod)[[2]]      # -0.09
+# Which combinations of b, v_ind, and v_err could plausibly produce both:
+# the observed slope of change vs. initial
+# the observed variance in change?
+# You do this by simulating datasets across a grid, then keeping only those combinations where:
+# 
+# The observed slope in the simulated dataset matches the observed slope in your real data
+# The predicted variance in change (b^2 + v_ind + 2*v_err) matches the variance in your real data
+# This filtering step is what makes your inference about b_true and v_ind data-driven, rather than just based on slope matching.
+# Then we look at the TRUE underlying relationship b in the set of plausible simulations.
 
-# Search simulations for scenarios giving rise to an observed *b* of -0.37 ± 0.1
-mill_b_summ <- results %>%
-  filter(cor.type == "obs.b",
-         abs(estimate - mill_b) < 0.1)
+# Slope and variance estimation from mill dataset 
+mill_mod <- lm(log_change_obs ~ scale(log_init_obs), data = mill)  # scaled to unit variance to match simulations
+b_obs <- coef(mill_mod)[[2]]      # -0.37 (observed slope)
+b_obs_ci <- confint(mill_mod)[2,]   # 95% confidence interval for observed slope
+# Variance in initial observed trait values and observed individual changes (on absolute/trait scale)
+var_x_abs <- var(mill$log_init_obs, na.rm = TRUE)
+var_y_abs <- var(mill$log_change_obs, na.rm = TRUE)
 
-# Plot which of the scenarios producing this b value reflect a correct (true) negative relationship, or not
-ggplot(mill_b_summ, aes(x = v_ind, y = v_err, shape = outcome == "correct", color = outcome == "correct")) +
-  geom_jitter(width = 0.01, height = 0.01, alpha = 0.5) +
-  xlim(0, 1) +
-  ylim(0, 1)
+# Measurement error variance 
+v_err_abs <- 0.01301945     # on trait scale (logTLE)
+v_pop_abs <- var_x_abs - v_err_abs       # Initial true trait value variance (subtract measurement error var)
+v_err_rel <- v_err_abs / v_pop_abs       # Measurement error variance on relative scale
+                                         # i.e., relative to v_pop since v_pop standardized to 1 in simulations
+
+# Estimate v_ind from data based on known v_err and observed variance in change.
+# b_obs is from standardized log_init_obs, so we multiply by var_x_abs to put it back on the unscaled (absolute) scale
+v_ind_est_abs <- var_y_abs - (b_obs^2 * var_x_abs) - 2 * v_err_abs
+v_ind_est_rel <- v_ind_est_abs / v_pop_abs
+# 0.23 rel to v_pop. let's search 0 to 1 in simulations just to include very broad search.
+
+# Observed variance in change, rescaled to simulation scale (v_pop = 1)
+var_y_rel <- var_y_abs / v_pop_abs
+# Bootstrap confidence interval for variance in observed change over time
+library(boot)
+boot_fun <- function(data, indices) {
+  d <- data[indices, ]
+  var(d$log_change_obs, na.rm = TRUE)
+}
+set.seed(123)
+boot_out <- boot(mill, statistic = boot_fun, R = 1000)
+boot_ci <- boot.ci(boot_out, type = "perc")
+
+# Convert to relative scale
+var_y_abs_low  <- boot_ci$percent[4]
+var_y_abs_high <- boot_ci$percent[5]
+
+var_y_rel_low  <- var_y_abs_low  / v_pop_abs
+var_y_rel_high <- var_y_abs_high / v_pop_abs
+
+
+
+
+
+
+
+
+
+# Run new simulations with known mill v_err to identify all possible true relationships given observed slope
+mill_pars <- expand_grid(
+  v_pop = 1,                            # Set trait variance to 1 (relative)
+  v_ind = seq(0, 1, 0.025),               # Test broad v_ind (relative to v_pop = 1; mill estimate = 1.57)
+  v_err = seq(0, 0.05, 0.005),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
+  b = seq(-1, 1, 0.01)                  # Test all unknown true relationships
+)
+
+
+
+# Run the function on all parameter combinations and bind results
+library(future)
+library(furrr)
+plan(multisession)
+mill_sim_all <- future_pmap_dfr(
+  mill_pars,
+  test.cors,
+  .options = furrr_options(seed = TRUE, packages = "broom")  # ensures broom is loaded on each worker
+) %>%
+  select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value)
+
+# Get all possible true b simulations that could produce mill observed b [±95CI]
+mill_sim_possible <- mill_sim_all %>%
+  pivot_wider(names_from = cor.type, values_from = c(estimate, p.value)) %>%
+  mutate(
+    # Keep only simulations where:
+    # 1. Simulated observed slope (estimate_obs.b) lies within the 95% CI from real data
+    slope_match = estimate_obs.b > b_obs_ci[1] & 
+                  estimate_obs.b < b_obs_ci[2],
+    # 2. Simulated total variance in change (b^2 + v_ind + 2 * v_err) lies within the bootstrapped 95% CI of var_y_rel
+    var_match = (v_ind + b^2 + 2 * v_err >= var_y_rel_low) & 
+                (v_ind + b^2 + 2 * v_err <= var_y_rel_high)
+  ) %>%
+  filter(slope_match, var_match)
+
+
+
+# Plot true and KP-adjusted slopes for possible scenarios consistent with mill study
+mill_sim_possible %>%
+  select(v_ind, b, estimate_obs.b, estimate_adj.b) %>%
+  pivot_longer(cols = c(b, estimate_obs.b, estimate_adj.b)) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(aes(fill = name), position = "identity", 
+                 binwidth = 0.01, alpha = 0.5)
+
+
+mean(mill_sim_possible$b)     # likely true slope from simulations given observed
+quantile(mill_sim_possible$b, c(0.025, 0.975))
+b_obs    # observed slope is more negative than likely true slope
+b_obs_ci
+
+# # # Heatmap of most likely parameter combos
+# ggplot(mill_sim_possible, aes(x = b, y = v_ind)) +
+#   geom_bin2d(binwidth = c(0.01, 0.025)) +
+#   scale_fill_viridis_c(option = "C") +
+#   labs(
+#     title = "Parameter combinations consistent with observed slope and variance",
+#     x = "True slope (b)", y = "True individual variance (v_ind)"
+#   )
 ```
-
-* The simulations where the *A. cervicornis* observed outcome is correct (i.e., true negative relationship exists) are when v_err < ~0.1     
-* The simulations where the *A. cervicornis* observed outcome is NOT correct (i.e., reflects a spurious relationship) are when v_err > ~0.1.
-* The calculated v_err from Carly's script is 0.005-0.013 relative to the total variance (depends on whether it should be variance of final or variance of initial?). Either way, this is very low and much lower than the ~0.1 simulation threshold.
-* Conclusion: A negative relationship between initial size and change in size is very likely real.

@@ -738,6 +738,7 @@ k_num<-var(dat2$meanDif)
 
 #calculate total variance in TLE from original dataset
 k_den<-var(subMilnb$size)
+kk <- var(subMilnb$InitialSize)
 
 #then calculate full k
 k<-k_num/k_den 
@@ -751,3 +752,11 @@ SlopeRaw<-coef(lm1)[2] #pull the slope
 
 (SlopeRaw + k) / (1 - k) #correct for measurement error - again, slight adjustment, still positive!
 
+
+
+# Calc v_err 
+millsumm <- as.tibble(dat2) %>%
+  select(T0_TLE, T0_FieldTLE) %>%
+  mutate(across(everything(), log),
+         diff = T0_TLE - T0_FieldTLE)
+var(millsumm$diff)/2
