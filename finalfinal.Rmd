@@ -499,8 +499,10 @@ test.cors <- function(v_pop, v_ind, v_err, b) {
     log_change_true = b * scale(log_init_true)[,1] + rnorm(n, mean = 0, sd = sqrt(v_ind)),   
     log_final_true = log_init_true + log_change_true,           # Final = initial + change
     e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
+    e_init2 = rnorm(n, mean = 0, sd = sqrt(v_err)),
     e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
     log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
+    log_init_obs2 = log_init_true + e_init2,
     log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
     log_change_obs = log_final_obs - log_init_obs   # Observed change
   )
@@ -513,6 +515,7 @@ test.cors <- function(v_pop, v_ind, v_err, b) {
   # Get true, observed, and adjusted correlations between change and initial
   bind_rows(.id = "cor.type",
         obs.b = tidy(lm(log_change_obs ~ scale(log_init_obs), data = df))[2,],
+        obs.b2 = tidy(lm(log_change_obs ~ scale((log_init_obs+log_init_obs2)/2), data = df))[2,],
         adj.b = tidy(lm(log_change_obs_adj ~ scale(log_init_obs), data = df))[2,],
       obs.cor = tidy(cor.test(df$log_change_obs, df$log_init_obs)),
       adj.cor = tidy(cor.test(df$log_change_obs_adj, df$log_init_obs))
@@ -547,7 +550,9 @@ results <- pmap_dfr(pars, test.cors) %>%
 
 
 results %>%
-  filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
+  # Decide if this should show regression slope b significance or cor.test significance
+  #filter(cor.type %in% c("obs.cor", "adj.cor")) %>%
+  filter(cor.type %in% c("obs.b", "obs.b2", "adj.b")) %>%
   ggplot(aes(y = v_err, x = v_ind)) +
     geom_point(aes(shape = dir, color = outcome, fill = outcome), size = 2) +
     facet_grid(cor.type ~ b, labeller = labeller(b = function(x) paste0("b = ", x))) +
