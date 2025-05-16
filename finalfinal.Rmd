@@ -803,37 +803,116 @@ pdam_sim_possible <- pdam_sim_all %>%
 #   labs(y = "Slope (b)", x = NULL,
 #        title = "Comparison of observed vs. inferred true slope")
 
+```
 
+```{r pdam_blomqvist}
+library(boot)
 
+# Define measurement error variance (absolute scale)
+v_err_abs <- 0.0231325
 
-# Step 1: Create a tidy data frame for the summary points
+# POINT ESTIMATE using scaled predictor
+b_obs_scaled <- coef(lm(log_change_obs ~ scale(log_init_obs), data = pdam))[2]
+k <- 2 * v_err_abs                      # since Var(scaled predictor) = 1
+b_true_blomqvist <- unname((b_obs_scaled + k) / (1 - k))  # unname to remove confusion
+
+# BOOTSTRAP FUNCTION
+blomqvist_boot_scaled <- function(data, indices, v_err_abs) {
+  d <- data[indices, ]
+  x <- scale(d$log_init_obs)[, 1]       # Standardized predictor
+  y <- d$log_final_obs - d$log_init_obs # Observed change
+  b_obs <- coef(lm(y ~ x))[2]           # Slope from scaled X
+  k <- 2 * v_err_abs                    # Var(x) = 1
+  unname((b_obs + k) / (1 - k))
+}
+
+# Run bootstrap
+set.seed(123)
+boot_out <- boot(data = pdam, statistic = blomqvist_boot_scaled, R = 1000, v_err_abs = v_err_abs)
+
+# Bootstrap 95% percentile confidence interval
+boot_ci <- boot.ci(boot_out, type = "perc")
+
+# Output results
+b_true_blomqvist           # Point estimate
+boot_ci$percent[4:5]       # 95% CI
+```
+
+```{r pdam_compareslopes}
+# # Step 1: Create a tidy data frame for the summary points
+# b_summary <- tibble(
+#   method = c("Observed", "Kelly-Price Adjusted", "Simulation-Inferred"),
+#   estimate = c(b_obs,
+#                mean(pdam_sim_possible$estimate_adj.b),
+#                mean(pdam_sim_possible$b)),
+#   lower = c(b_obs_ci[1],
+#             quantile(pdam_sim_possible$estimate_adj.b, 0.025),
+#             quantile(pdam_sim_possible$b, 0.025)),
+#   upper = c(b_obs_ci[2],
+#             quantile(pdam_sim_possible$estimate_adj.b, 0.975),
+#             quantile(pdam_sim_possible$b, 0.975))
+# )
+# 
+# # Step 2: Plot point + interval for all three methods
+# ggplot(b_summary, aes(x = method, y = estimate)) +
+#   geom_point(size = 3) +
+#   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+#   geom_hline(yintercept = 0, linetype = "dashed") +
+#   labs(
+#     title = "Comparison of slope estimates (b)",
+#     y = "Slope (b)", x = NULL
+#   ) +
+#   theme_minimal(base_size = 14)
+
+#'simulation-inferred'...true?
+#“The resulting distribution over b represents an approximate posterior over plausible true slopes given the data”
+
+# Step 1: Create a tidy data frame with reversed factor levels
 b_summary <- tibble(
-  method = c("Observed", "Kelly-Price Adjusted", "Simulation-Inferred"),
-  estimate = c(b_obs,
-               mean(pdam_sim_possible$estimate_adj.b),
-               mean(pdam_sim_possible$b)),
-  lower = c(b_obs_ci[1],
-            quantile(pdam_sim_possible$estimate_adj.b, 0.025),
-            quantile(pdam_sim_possible$b, 0.025)),
-  upper = c(b_obs_ci[2],
-            quantile(pdam_sim_possible$estimate_adj.b, 0.975),
-            quantile(pdam_sim_possible$b, 0.975))
+  method = factor(
+    c("Observed", 
+      "Blomqvist Corrected", 
+      "Simulation-Inferred", 
+      "Kelly-Price Adjusted"),
+    levels = rev(c("Observed", 
+                   "Blomqvist Corrected", 
+                   "Simulation-Inferred", 
+                   "Kelly-Price Adjusted"))
+  ),
+  estimate = c(
+    b_obs,
+    b_true_blomqvist,
+    mean(pdam_sim_possible$b),
+    mean(pdam_sim_possible$estimate_adj.b)
+  ),
+  lower = c(
+    b_obs_ci[1],
+    boot_ci$percent[4],
+    quantile(pdam_sim_possible$b, 0.025),
+    quantile(pdam_sim_possible$estimate_adj.b, 0.025)
+  ),
+  upper = c(
+    b_obs_ci[2],
+    boot_ci$percent[5],
+    quantile(pdam_sim_possible$b, 0.975),
+    quantile(pdam_sim_possible$estimate_adj.b, 0.975)
+  )
 )
 
-# Step 2: Plot point + interval for all three methods
+# Step 2: Plot with correct top-to-bottom order
 ggplot(b_summary, aes(x = method, y = estimate)) +
   geom_point(size = 3) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   labs(
-    title = "Comparison of slope estimates (b)",
+    title = "Comparison of Slope Estimates (b)",
     y = "Slope (b)", x = NULL
   ) +
-  theme_minimal(base_size = 14)
+  theme_minimal(base_size = 14) +
+  coord_flip()
 
-#'simulation-inferred'...true?
-#“The resulting distribution over b represents an approximate posterior over plausible true slopes given the data”
 ```
+
 
 
 
@@ -1064,3 +1143,52 @@ ggplot(b_summary, aes(x = method, y = estimate)) +
   ) +
   theme_minimal(base_size = 14)
 ```
+
+
+# how to apply simulation based inference to a simulation with true relationship - can we recover true with an unknown measurement error / practical advice on precision of measurement error
+# e.g., take scenario 2.5 and take a subset of the data and recover the true slope again? w/ various estimates of measurement error? or v_err rel to v_pop
+
+# bring in another dataset from Kelly and Price that was dismissed as RTM
+
+
+```{r}
+# UNSCALED PREDICTOR
+#Blomqvist method
+
+v_err_abs <- 0.0231325
+var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+# Note this is done with UNSCALED predictor
+b_obs <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[2]
+var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+k <- 2 * v_err_abs / var_x_abs
+b_true_blomqvist <- (b_obs + k) / (1 - k)
+
+library(boot)
+
+# Function to compute Blomqvist-corrected slope from a resampled dataset
+blomqvist_boot <- function(data, indices, v_err_abs) {
+  d <- data[indices, ]
+  x <- d$log_init_obs
+  y <- d$log_final_obs - d$log_init_obs
+  b_obs <- coef(lm(y ~ x))[2]
+  var_x <- var(x, na.rm = TRUE)
+  k <- 2 * v_err_abs / var_x
+  (b_obs + k) / (1 - k)
+}
+
+# Run the bootstrap
+set.seed(123)
+boot_out <- boot(data = pdam, statistic = blomqvist_boot, R = 1000, v_err_abs = 0.0231325)
+
+# Bootstrap percentile CI
+boot_ci <- boot.ci(boot_out, type = "perc")
+
+# Output
+boot_out$t0              # Point estimate
+boot_ci$percent[4:5]     # 95% CI
+
+```
+
+
+
+
