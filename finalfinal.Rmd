@@ -603,7 +603,6 @@ from Cunning and Baker 2013
 ```{r pdam_import_tidy}
 # Import and tidy Pdam data
 pdam0 <- read_csv("PdamRbleaching.csv")
-
 pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
          log_final_raw = log(augtotal),
@@ -611,11 +610,9 @@ pdam <- pdam0 %>%
 
 
 # Remove symbiont effect
-
 ## Calculate grand mean
 grand_mean_init <- mean(pdam$log_init_raw)
 grand_mean_final <- mean(pdam$log_final_raw)
-
 ## Add sym-group residuals to grand mean
 pdam <- pdam %>%
   group_by(sym) %>%
@@ -631,34 +628,22 @@ pdam <- pdam %>%
 pdam <- pdam %>% mutate(
   log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
 )
-
-save(pdam, file = "pdam.RData")
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
 ```{r pdam_plots, fig.width = 10, fig.height = 3}
 # ## Compute new plot limit values
-pdam_initfinal <- pdam %>%
-  select(log_init_obs, log_final_obs) %>%
-  summarise(
-    min = min(c_across(everything()), na.rm = TRUE),
-    max = max(c_across(everything()), na.rm = TRUE)
-  )
-pdam_initchange <- pdam %>%
-  select(log_change_obs) %>%
-  summarise(
-    min = min(c_across(everything()), na.rm = TRUE),
-    max = max(c_across(everything()), na.rm = TRUE)
-  )
+pdam_trait <- range(c(pdam$log_init_obs, pdam$log_final_obs), na.rm = TRUE)
+pdam_change <- range(pdam$log_change_obs, na.rm = TRUE)
 
 pdam_plots <- list(
   chiolero_plot(pdam, log_init_obs, log_final_obs),
-  p6 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
-                            ylim = c(pdam_initfinal$min, pdam_initfinal$max)),
-  p7 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
-                            ylim = c(pdam_initchange$min, pdam_initchange$max)),
-  p8 %+% pdam + coord_fixed(xlim = c(pdam_initfinal$min, pdam_initfinal$max),
-                            ylim = c(pdam_initchange$min, pdam_initchange$max))
+  p6 %+% pdam + coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]),
+                            ylim = c(pdam_trait[1], pdam_trait[2])),
+  p7 %+% pdam + coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]),
+                            ylim = c(pdam_change[1], pdam_change[2])),
+  p8 %+% pdam + coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]),
+                            ylim = c(pdam_change[1], pdam_change[2]))
 )
 
 wrap_plots(pdam_plots, nrow = 1) +
@@ -696,58 +681,53 @@ grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
 
 # Slope and variance estimation from Pdam dataset 
 pdam_mod <- lm(log_change_obs ~ scale(log_init_obs), data = pdam)  # scaled to unit variance to match simulations
-b_obs <- coef(pdam_mod)[[2]]      # -0.37 (observed slope)
-b_obs_ci <- confint(pdam_mod)[2,]   # 95% confidence interval for observed slope
+pdam_b_obs <- coef(pdam_mod)[[2]]      # -0.37 (observed slope)
+pdam_b_obs_ci <- confint(pdam_mod)[2,]   # 95% confidence interval for observed slope
 # Variance in initial observed trait values and observed individual changes (on absolute/trait scale)
-var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
-var_y_abs <- var(pdam$log_change_obs, na.rm = TRUE)
+pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+pdam_var_y_abs <- var(pdam$log_change_obs, na.rm = TRUE)
 
 # Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
-v_err_abs <- 0.0231325     # on trait scale (logSH)
-v_pop_abs <- var_x_abs - v_err_abs       # Initial true trait value variance (subtract measurement error var)
-v_err_rel <- v_err_abs / v_pop_abs       # Measurement error variance on relative scale
+pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
+pdam_v_pop_abs <- pdam_var_x_abs - pdam_v_err_abs       # Initial true trait value variance (subtract measurement error var)
+pdam_v_err_rel <- pdam_v_err_abs / pdam_v_pop_abs       # Measurement error variance on relative scale
                                          # i.e., relative to v_pop since v_pop standardized to 1 in simulations
 
 # Estimate v_ind from data based on known v_err and observed variance in change.
 # b_obs is from standardized log_init_obs, so we multiply by var_x_abs to put it back on the unscaled (absolute) scale
-v_ind_est_abs <- var_y_abs - (b_obs^2 * var_x_abs) - 2 * v_err_abs
-v_ind_est_rel <- v_ind_est_abs / v_pop_abs
+pdam_v_ind_est_abs <- pdam_var_y_abs - (pdam_b_obs^2 * pdam_var_x_abs) - 2 * pdam_v_err_abs
+pdam_v_ind_est_rel <- pdam_v_ind_est_abs / pdam_v_pop_abs
 # 1.57 rel to v_pop. let's search 0 to 4 in simulations just to include very broad search.
 
 # Observed variance in change, rescaled to simulation scale (v_pop = 1)
-var_y_rel <- var_y_abs / v_pop_abs
+pdam_var_y_rel <- pdam_var_y_abs / pdam_v_pop_abs
 # Bootstrap confidence interval for variance in observed change over time
-boot_fun <- function(data, indices) {
+pdam_var_boot_fun <- function(data, indices) {
   d <- data[indices, ]
   var(d$log_change_obs, na.rm = TRUE)
 }
 set.seed(123)
-boot_out <- boot(pdam, statistic = boot_fun, R = 1000)
-boot_ci <- boot.ci(boot_out, type = "perc")
+pdam_var_boot_out <- boot(pdam, statistic = pdam_var_boot_fun, R = 1000)
+pdam_var_boot_ci <- quantile(pdam_var_boot_out$t, c(0.025, 0.975))
 
 # Convert to relative scale
-var_y_abs_low  <- boot_ci$percent[4]
-var_y_abs_high <- boot_ci$percent[5]
+pdam_var_y_abs_low  <- pdam_var_boot_ci[1]
+pdam_var_y_abs_high <- pdam_var_boot_ci[2]
 
-var_y_rel_low  <- var_y_abs_low  / v_pop_abs
-var_y_rel_high <- var_y_abs_high / v_pop_abs
-
-
-
-
-
-
+pdam_var_y_rel_low  <- pdam_var_y_abs_low  / pdam_v_pop_abs
+pdam_var_y_rel_high <- pdam_var_y_abs_high / pdam_v_pop_abs
 
 
 
 # Run new simulations with known Pdam v_err to identify all possible true relationships given observed slope
-pdam_pars <- expand_grid(
+pdam_sim_pars <- expand_grid(
+  n = 42,
   v_pop = 1,                            # Set trait variance to 1 (relative)
-  v_ind = seq(0, 3, 0.25),              # Test broad v_ind (relative to v_pop = 1; Pdam estimate = 1.57)
-  v_err = v_err_rel, #seq(0.06, 0.27, 0.1),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)  COULD ALSO JUST USE POINT ESTIMATE INSTEAD OF CI...
+  v_ind = seq(0, 3, 0.1),              # Test broad v_ind (relative to v_pop = 1; Pdam estimate = 1.57)
+  v_err = pdam_v_err_rel, #seq(0.06, 0.27, 0.1),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)  COULD ALSO JUST USE POINT ESTIMATE INSTEAD OF CI...
                                     
                                            # this is from confint; see pdam_variance.R
-  b = seq(-1, 1, 0.1)                  # Test all unknown true relationships
+  b = seq(-1, 1, 0.01)                  # Test all unknown true relationships
 )
 
 
@@ -755,25 +735,83 @@ pdam_pars <- expand_grid(
 # Run the function on all parameter combinations and bind results
 plan(multisession)
 pdam_sim_all <- future_pmap_dfr(
-  pdam_pars,
+  pdam_sim_pars,
   test.cors,
   .options = furrr_options(seed = TRUE, packages = "broom")  # ensures broom is loaded on each worker
 ) %>%
-  select(v_pop, v_ind, v_err, b, cor.type, estimate, p.value)
+  select(v_pop, v_ind, v_err, b, cor.type, estimate)
 
-# Get all possible true b simulations that could produce pdam observed b [±95CI]
-pdam_sim_possible <- pdam_sim_all %>%
-  pivot_wider(names_from = cor.type, values_from = c(estimate, p.value)) %>%
+#Weighting
+
+# --- Step 1: Pivot simulation results to wide format ---
+# Step 1: Filter simulations
+pdam_sim_filtered <- pdam_sim_all %>%
+  pivot_wider(names_from = cor.type, values_from = estimate) %>%
+  mutate(var_sim = v_ind + b^2 + 2 * v_err) %>%
+  # Filter based on 95% C.I. for observed slope and variance
+  filter(
+    obs.b >= pdam_b_obs_ci[1],
+    obs.b <= pdam_b_obs_ci[2],
+    var_sim >= pdam_var_y_rel_low,
+    var_sim <= pdam_var_y_rel_high
+  )
+
+# Unweighted b_sim ± CI (uniform over filtered set)
+pdam_b_sim <- mean(pdam_sim_filtered$b)
+pdam_b_sim_ci <- quantile(pdam_sim_filtered$b, c(0.025, 0.975), na.rm = TRUE)
+
+# Step 2: Compute standard deviation of errors in slope and variance (from observed) across simulations
+slope_error_sd <- sd(pdam_sim_filtered$obs.b - pdam_b_obs, na.rm = TRUE)
+var_error_sd   <- sd(pdam_sim_filtered$var_sim - pdam_var_y_rel, na.rm = TRUE)
+
+# Compute weights based on scaled errors
+# Step 3: Apply weights (standardized to units of standard deviation)
+sharpness <- 8  # Tune this as needed
+pdam_sim_wtd <- pdam_sim_filtered %>%
   mutate(
-    # Keep only simulations where:
-    # 1. Simulated observed slope (estimate_obs.b) lies within the 95% CI from real data
-    slope_match = estimate_obs.b > b_obs_ci[1] & 
-                  estimate_obs.b < b_obs_ci[2],
-    # 2. Simulated total variance in change (b^2 + v_ind + 2 * v_err) lies within the bootstrapped 95% CI of var_y_rel
-    var_match = (v_ind + b^2 + 2 * v_err >= var_y_rel_low) & 
-                (v_ind + b^2 + 2 * v_err <= var_y_rel_high)
-  ) %>%
-  filter(slope_match, var_match)
+    slope_error_z = (obs.b - pdam_b_obs) / slope_error_sd,
+    var_error_z   = (var_sim - pdam_var_y_rel) / var_error_sd,
+    weight        = exp(-0.5 * sharpness * (slope_error_z^2 + var_error_z^2))
+  )
+hist(pdam_sim_wtd$weight, breaks = 100)
+
+# Step 4: Compute weighted summary
+pdam_b_sim_ci_wtd <- Hmisc::wtd.quantile(
+  pdam_sim_wtd$b,
+  weights = pdam_sim_wtd$weight,
+  normwt = TRUE,
+  probs = c(0.025, 0.975)
+)
+pdam_b_sim_wtd <- Hmisc::wtd.mean(
+  pdam_sim_wtd$b,
+  weights = pdam_sim_wtd$weight,
+  normwt = TRUE)
+
+
+
+
+cat("Unweighted CI width:", diff(pdam_b_sim_ci), "\n")
+cat("Weighted CI width:", diff(pdam_b_sim_ci_wtd), "\n")
+
+
+
+
+
+
+
+# # Get all possible true b simulations that could produce pdam observed b [±95CI]
+# pdam_sim_possible <- pdam_sim_all %>%
+#   pivot_wider(names_from = cor.type, values_from = c(estimate, p.value)) %>%
+#   mutate(
+#     # Keep only simulations where:
+#     # 1. Simulated observed slope (estimate_obs.b) lies within the 95% CI from real data
+#     slope_match = estimate_obs.b > b_obs_ci[1] & 
+#                   estimate_obs.b < b_obs_ci[2],
+#     # 2. Simulated total variance in change (b^2 + v_ind + 2 * v_err) lies within the bootstrapped 95% CI of var_y_rel
+#     var_match = (v_ind + b^2 + 2 * v_err >= var_y_rel_low) & 
+#                 (v_ind + b^2 + 2 * v_err <= var_y_rel_high)
+#   ) %>%
+#   filter(slope_match, var_match)
 
 
 
@@ -782,10 +820,10 @@ pdam_sim_possible <- pdam_sim_all %>%
 #   select(v_ind, b, estimate_obs.b, estimate_adj.b) %>%
 #   pivot_longer(cols = c(b, estimate_obs.b, estimate_adj.b)) %>%
 #   ggplot(aes(x = value)) +
-#   geom_histogram(aes(fill = name), position = "identity", 
+#   geom_histogram(aes(fill = name), position = "identity",
 #                  binwidth = 0.01, alpha = 0.5)
-
-
+# 
+# 
 # mean(pdam_sim_possible$b)     # likely true slope from simulations given observed
 # quantile(pdam_sim_possible$b, c(0.025, 0.975))
 # b_obs    # observed slope is more negative than likely true slope
@@ -819,10 +857,9 @@ pdam_sim_possible <- pdam_sim_all %>%
 ```
 
 ```{r pdam_blomqvist}
-# POINT ESTIMATE using scaled predictor
-b_obs_scaled <- coef(lm(log_change_obs ~ scale(log_init_obs), data = pdam))[2]
-k <- 2 * v_err_rel                   
-b_true_blomqvist <- unname((b_obs_scaled + k) / (1 - k))  # unname to remove confusion
+# BLOMQVIST POINT ESTIMATE using scaled predictor
+k <- 2 * pdam_v_err_rel                   
+pdam_b_blomq <- unname((pdam_b_obs + k) / (1 - k))  # unname to remove confusion
 
 # Bootstrap function (recomputes Blomqvist-corrected slope from resampled data)
 blomqvist_boot_scaled <- function(data, indices) {
@@ -833,10 +870,15 @@ blomqvist_boot_scaled <- function(data, indices) {
 
 # Run bootstrap
 set.seed(123)
-boot_out <- boot(data = pdam, statistic = blomqvist_boot_scaled, R = 1000)
+pdam_b_blomq_boot_out <- boot(data = pdam, statistic = blomqvist_boot_scaled, R = 1000)
 
 # Use quantiles directly from bootstrap distribution for CI
-b_blomq_ci <- quantile(boot_out$t, c(0.025, 0.975))
+pdam_b_blomq_ci <- quantile(pdam_b_blomq_boot_out$t, c(0.025, 0.975))
+
+# Kelly-Price adjusted point estimate and CI
+pdam_mod_adj <- lm(log_change_obs_adj ~ scale(log_init_obs), data = pdam)
+pdam_b_kp <- coef(pdam_mod_adj)[[2]]
+pdam_b_kp_ci <- confint(pdam_mod_adj)[2,]
 ```
 
 ```{r pdam_compareslopes}
@@ -846,29 +888,34 @@ b_summary <- tibble(
     c("Observed", 
       "Blomqvist Corrected", 
       "Simulation-Inferred", 
+      "Simulation-Inferred (Weighted)",
       "Kelly-Price Adjusted"),
     levels = rev(c("Observed", 
                    "Blomqvist Corrected", 
                    "Simulation-Inferred", 
+                   "Simulation-Inferred (Weighted)",
                    "Kelly-Price Adjusted"))
   ),
   estimate = c(
-    b_obs,
-    b_true_blomqvist,
-    mean(pdam_sim_possible$b),
-    mean(pdam_sim_possible$estimate_adj.b)
+    pdam_b_obs,
+    pdam_b_blomq,
+    pdam_b_sim,
+    pdam_b_sim_wtd,
+    pdam_b_kp
   ),
   lower = c(
-    b_obs_ci[1],
-    b_blomq_ci[1],
-    quantile(pdam_sim_possible$b, 0.025),
-    quantile(pdam_sim_possible$estimate_adj.b, 0.025)
+    pdam_b_obs_ci[1],
+    pdam_b_blomq_ci[1],
+    pdam_b_sim_ci[1],
+    pdam_b_sim_ci_wtd[1],
+    pdam_b_kp_ci[1]
   ),
   upper = c(
-    b_obs_ci[2],
-    b_blomq_ci[2],
-    quantile(pdam_sim_possible$b, 0.975),
-    quantile(pdam_sim_possible$estimate_adj.b, 0.975)
+    pdam_b_obs_ci[2],
+    pdam_b_blomq_ci[2],
+    pdam_b_sim_ci[2],
+    pdam_b_sim_ci_wtd[2],
+    pdam_b_kp_ci[2]
   )
 )
 
@@ -1313,7 +1360,7 @@ param_grid <- expand.grid(
 
 # Test with replicate datasets for each parameter set
 # Updated seeds for replicates per parameter set
-evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 25) {
+evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 50) {
   replicate_results <- purrr::map_dfr(seq_len(reps), function(i) {
     set.seed(seed + i)  # Unique seed per replicate
 
@@ -1345,6 +1392,7 @@ evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 
     b_kp <- coef(kp_fit)[2]
 
     # Step 5: Simulation-based inference
+    var_y_rel <- var(syn_df$log_change_obs) / v_pop
     boot_var <- boot::boot(syn_df, function(data, i) var(data[i, ]$log_change_obs), R = 100)
     var_ci <- quantile(boot_var$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1372,17 +1420,41 @@ evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 
     slope_bounds <- confint(obs_fit)["scale(log_init_obs)", ]
 
     sim_filtered <- sim_results %>%
+      mutate(var_sim = v_ind + b^2 + 2 * v_err) %>%
       filter(est > slope_bounds[1], est < slope_bounds[2]) %>%
-      filter(v_ind + b^2 + 2 * v_err >= var_ci[1],
-             v_ind + b^2 + 2 * v_err <= var_ci[2])
+      filter(var_sim >= var_ci[1], var_sim <= var_ci[2])
+    
+    # # Step 2: Compute standard deviation of errors in slope and variance (from observed) across simulations
+    # slope_error_sd <- sd(sim_filtered$est - b_obs, na.rm = TRUE)
+    # var_error_sd   <- sd(sim_filtered$var_sim - var_y_rel, na.rm = TRUE)
 
+    # Compute weights based on scaled errors
+    # Step 3: Apply weights (standardized to units of standard deviation)
+    # sharpness <- 100  # Tune this as needed
+    # sim_wtd <- sim_filtered %>%
+    #   mutate(
+    #     slope_error_z = (est - b_obs) / slope_error_sd,
+    #     var_error_z   = (var_sim - var_y_rel) / var_error_sd,
+    #     weight        = exp(-0.5 * sharpness * (slope_error_z^2 + var_error_z^2))
+    #   )
+    # 
+    # # Step 4: Compute weighted summary
+    # b_sim_wtd <- Hmisc::wtd.mean(
+    #   sim_wtd$b,
+    #   weights = sim_wtd$weight,
+    #   normwt = TRUE
+    # )
+    
+    # Compute unweighted
     b_sim <- mean(sim_filtered$b, na.rm = TRUE)
+    
 
     tibble(
       b_obs = b_obs,
       b_blomq = b_blomq,
       b_kp = b_kp,
       b_sim = b_sim,
+      #b_sim_wtd = b_sim_wtd,
       b_true = b_true
     )
   })
@@ -1390,7 +1462,7 @@ evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 
   # Summarize results across replicates using `across()`
   summarised <- replicate_results %>%
     summarise(across(
-      .cols = c(b_obs, b_blomq, b_kp, b_sim),
+      .cols = c(b_obs, b_blomq, b_kp, b_sim),#, b_sim_wtd),
       .fns = list(
         mean = ~ mean(.x, na.rm = TRUE),
         sd   = ~ sd(.x, na.rm = TRUE),
@@ -1418,7 +1490,7 @@ results_all <- future_pmap_dfr(param_grid, evaluate_methods)
 # Pivot to long format for plotting
 results_long <- results_all %>%
   pivot_longer(
-    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean, b_sim_mean),
+    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean, b_sim_mean),# b_sim_wtd_mean),
     names_to = "method",
     values_to = "estimate"
   ) %>%
@@ -1427,7 +1499,8 @@ results_long <- results_all %>%
       method == "b_obs_mean"    ~ b_obs_sd,
       method == "b_kp_mean"     ~ b_kp_sd,
       method == "b_blomq_mean"  ~ b_blomq_sd,
-      method == "b_sim_mean"    ~ b_sim_sd
+      method == "b_sim_mean"    ~ b_sim_sd#,
+      #method == "b_sim_wtd_mean"~ b_sim_wtd_sd
     ),
     error = estimate - b_true
   )
