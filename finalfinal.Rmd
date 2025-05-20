@@ -1,7 +1,7 @@
 ---
 title: "Regression to the mean and the detection of true relationships between change and initial values"
 author: "Ross Cunning"
-date: "2025-04-13"
+date: "2025-05-20"
 output:
   html_document:
     toc: true
@@ -9,7 +9,7 @@ output:
     toc_depth: 2
     theme: default  # or "lumen", "flatly", etc.
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -1106,7 +1106,7 @@ ggplot(mill_b_summary, aes(x = method, y = estimate)) +
 
 
 
-# Dataset 3: Synthetic data
+# Validation: Synthetic data
 
 ```{r evaluate_methods_and_1_parset_similar_to_pdam}
 # Create a function that will create synthetic datasets with known true slope and variance structure, and then test the ability of the four estimation methods (observed slope, kelly-price adjusted, blomqvist adjusted, and simulation-inferred) to recover the true slope
@@ -1247,17 +1247,21 @@ ggplot(plot_df, aes(x = method, y = mean)) +
   geom_point(size = 3) +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2) +
   geom_hline(yintercept = test_syn_eval$b_true, linetype = "dashed", color = "blue") +
-  annotate("text", x = 4.5, y = test_syn_eval$b_true, label = "True b", hjust = 1,
+  annotate("text", x = 4.5, y = test_syn_eval$b_true, label = "True slope", hjust = 1,
            vjust = -0.5, color = "blue", fontface = "italic") +
   labs(
     title = "Performance of Slope Estimators on Synthetic Dataset",
     y = "Estimated slope (mean ± SD)",
     x = NULL
   ) +
-  coord_flip() +
+  coord_flip(clip = "off") +
   theme_minimal(base_size = 14)
 
 ```
+
+So for datasets like the Pdam dataset, the simulation-inferred estimate is the best estimate of the true underlying relationship. 
+
+What about for more diverse datasets with varying true relationships, v_err, and v_ind? Evaluate the methods over a whole parameter grid.
 
 ```{r evaluate_methods_parameter_grid}
 
@@ -1267,8 +1271,8 @@ param_grid <- expand.grid(
   v_ind = c(0.01, 0.5, 2),                          # range of true v_ind in synthetic datasets
   v_err = c(0.01, 0.1, 0.4),                        # range of true v_err in synthetic datasets
   v_pop = 1,                                        # always standardize to v_pop = 1
-  reps = 50,                                       # n replicate synthetic datasets for each parameter set
-  n = 200,                                          # size of each synthetic dataset (should represent 'typical' scientific study)
+  reps = 50,                                        # n replicate synthetic datasets for each parameter set
+  n = 200,                    # size of each synthetic dataset (should represent a 'typical' scientific study)
   nsim = 2000                                       # size of sim-inferred simulations
 ) 
 
@@ -1337,4 +1341,9 @@ ggplot(results_long, aes(
 
 ```
 
-bring in another dataset from Kelly and Price that was dismissed as RTM
+* Observed relationships are highly subject to spurious negative overestimation, which worsens as measurement error increases.
+* Kelly-Price adjustments are highly susceptible to spurious positive overestimation, especially when the true relationship is negative, and as v_ind increases. 
+* Blomqvist adjustments are highly susceptible to spurious positive overestimation, especially when the true slope is positive, and as v_err increases.
+* The simulation-inferred slopes **consistently recover the accurate true relationship across all datasets.**
+
+Ideas: bring in another dataset from Kelly and Price that was dismissed as RTM and test with simulation based approach?
