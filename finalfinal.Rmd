@@ -9,7 +9,7 @@ output:
     toc_depth: 2
     theme: default  # or "lumen", "flatly", etc.
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +22,7 @@ Use simulated datasets to test conditions under which mathematical coupling, reg
 
 1. correctly recover the true relationship between change and initial values;
 2. produce a spurious relationship when there is not one;  
-2. fail to recover a true relationship when there is one.  
+3. fail to recover a true relationship when there is one.  
 
 Simulations have either no relationship between change and initial values ([Scenario 1](#Scenario 1: No relationship between change and initial)), or a true relationship specified by parameter *b* ([Scenario 2](# Scenario 2: True negative relationship between change and initial)), and include three sources of variance:  
 
@@ -743,10 +743,10 @@ var_y_rel_high <- var_y_abs_high / v_pop_abs
 # Run new simulations with known Pdam v_err to identify all possible true relationships given observed slope
 pdam_pars <- expand_grid(
   v_pop = 1,                            # Set trait variance to 1 (relative)
-  v_ind = seq(0, 4, 0.1),               # Test broad v_ind (relative to v_pop = 1; Pdam estimate = 1.57)
-  v_err = seq(0.06, 0.27, 0.01),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
+  v_ind = seq(0, 4, 0.5),               # Test broad v_ind (relative to v_pop = 1; Pdam estimate = 1.57)
+  v_err = seq(0.06, 0.27, 0.1),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
                                            # this is from confint; see pdam_variance.R
-  b = seq(-1, 1, 0.01)                  # Test all unknown true relationships
+  b = seq(-1, 1, 0.1)                  # Test all unknown true relationships
 )
 
 
@@ -1051,8 +1051,8 @@ var_y_rel_high <- var_y_abs_high / v_pop_abs
 # Run new simulations with known mill v_err to identify all possible true relationships given observed slope
 mill_pars <- expand_grid(
   v_pop = 1,                            # Set trait variance to 1 (relative)
-  v_ind = seq(0, 1, 0.025),               # Test broad v_ind (relative to v_pop = 1; 0.23 estimate - mill)
-  v_err = seq(0, 0.05, 0.005),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
+  v_ind = seq(0, 1, 0.1),               # Test broad v_ind (relative to v_pop = 1; 0.23 estimate - mill)
+  v_err = seq(0, 0.05, 0.01),        # Meas. err. variance on rel. scale (95% CI of v_err_abs / v_pop_abs)
   b = seq(-1, 1, 0.01)                  # Test all unknown true relationships
 )
 
@@ -1335,94 +1335,115 @@ ggplot(b_summary, aes(x = method, y = estimate)) +
 
 
 ```{r}
-set.seed(999)  # for reproducibility
+set.seed(999)  # for reproducibility of seeds in parameter grid
 
+# Create parameter grid for testing all slope correction methods
 param_grid <- expand.grid(
   b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),
-  v_ind = c(0.01, 0.1, 0.5, 1, 2),
-  v_err = c(0.01, 0.05, 0.1, 0.2, 0.4),
+  v_ind = c(0.01, 0.25, 1, 4),
+  v_err = c(0.01, 0.1, 0.2, 0.4),
   v_pop = 1
 ) %>%
+  # Each parameter set gets a different seed to use in generating simulated dataset
   dplyr::mutate(seed = sample.int(1e6, size = dplyr::n(), replace = FALSE))
 
+# Test with replicate datasets for each parameter set
+# Updated seeds for replicates per parameter set
+evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 200, reps = 50) {
+  replicate_results <- purrr::map_dfr(seq_len(reps), function(i) {
+    set.seed(seed + i)  # Unique seed per replicate
 
-evaluate_methods <- function(b_true, v_pop, v_ind, v_err, seed, n = 1000) {
-  set.seed(seed)
-  
-  # Step 1: Simulate data
-  log_init_true <- rnorm(n, 0, sqrt(v_pop))
-  log_change_true <- b_true * scale(log_init_true)[, 1] + rnorm(n, 0, sqrt(v_ind))
-  log_final_true <- log_init_true + log_change_true
-  e_init <- rnorm(n, 0, sqrt(v_err))
-  e_final <- rnorm(n, 0, sqrt(v_err))
-  
-  syn_df <- tibble(
-    log_init_obs = log_init_true + e_init,
-    log_final_obs = log_final_true + e_final,
-    log_change_obs = log_final_obs - log_init_obs
-  ) %>%
-    mutate(log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
-  
-  # Step 2: Observed
-  obs_fit <- lm(log_change_obs ~ scale(log_init_obs), data = syn_df)
-  b_obs <- coef(obs_fit)[2]
-  
-  # Step 3: Blomqvist
-  v_err_rel <- v_err / v_pop
-  k <- 2 * v_err_rel
-  b_blomq <- unname((b_obs + k) / (1 - k))
-  
-  # Step 4: Kelly-Price
-  kp_fit <- lm(log_change_obs_adj ~ scale(log_init_obs), data = syn_df)
-  b_kp <- coef(kp_fit)[2]
-  
-  # Step 5: ABC-like inference
-  boot_var <- boot(syn_df, function(data, i) var(data[i, ]$log_change_obs), R = 1000)
-  var_y <- var(syn_df$log_change_obs)
-  var_ci <- quantile(boot_var$t, c(0.025, 0.975))
-  
-  sim_pars <- expand.grid(
-    v_ind = seq(0, 4, 0.25),
-    b = seq(-1, 1, 0.05),
-    v_err = v_err, v_pop = v_pop
-  )
-  
-  test.slopes <- function(v_pop, v_ind, v_err, b) {
-    x <- rnorm(n, 0, sqrt(v_pop))
-    change <- b * scale(x)[, 1] + rnorm(n, 0, sqrt(v_ind))
-    final <- x + change
-    e1 <- rnorm(n, 0, sqrt(v_err))
-    e2 <- rnorm(n, 0, sqrt(v_err))
-    x_obs <- x + e1
-    y_obs <- final + e2
-    change_obs <- y_obs - x_obs
-    est <- coef(lm(change_obs ~ scale(x_obs)))[2]
-    tibble(est = est, b = b, v_ind = v_ind)
-  }
-  
-  sim_results <- pmap_dfr(sim_pars, test.slopes)
-  
-  slope_ci <- coef(summary(obs_fit))["scale(log_init_obs)", "Estimate"]
-  slope_bounds <- confint(obs_fit)["scale(log_init_obs)", ]
-  
-  sim_filtered <- sim_results %>%
-    filter(est > slope_bounds[1], est < slope_bounds[2]) %>%
-    filter(v_ind + b^2 + 2 * v_err >= var_ci[1],
-           v_ind + b^2 + 2 * v_err <= var_ci[2])
-  
-  b_sim_mean <- mean(sim_filtered$b, na.rm = TRUE)
-  
-  # Return all slope estimates + true b
-  tibble(
-    b_true = b_true,
-    b_obs = b_obs,
-    b_blomq = b_blomq,
-    b_kp = b_kp,
-    b_sim = b_sim_mean,
-    v_ind = v_ind,
-    v_err = v_err
-  )
+    # Step 1: Simulate data
+    log_init_true <- rnorm(n, 0, sqrt(v_pop))
+    log_change_true <- b_true * scale(log_init_true)[, 1] + rnorm(n, 0, sqrt(v_ind))
+    log_final_true <- log_init_true + log_change_true
+    e_init <- rnorm(n, 0, sqrt(v_err))
+    e_final <- rnorm(n, 0, sqrt(v_err))
+
+    syn_df <- tibble(
+      log_init_obs = log_init_true + e_init,
+      log_final_obs = log_final_true + e_final,
+      log_change_obs = log_final_obs - log_init_obs
+    ) %>%
+      mutate(log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
+
+    # Step 2: Observed slope
+    obs_fit <- lm(log_change_obs ~ scale(log_init_obs), data = syn_df)
+    b_obs <- coef(obs_fit)[2]
+
+    # Step 3: Blomqvist correction
+    v_err_rel <- v_err / v_pop
+    k <- 2 * v_err_rel
+    b_blomq <- unname((b_obs + k) / (1 - k))
+
+    # Step 4: Kelly-Price adjustment
+    kp_fit <- lm(log_change_obs_adj ~ scale(log_init_obs), data = syn_df)
+    b_kp <- coef(kp_fit)[2]
+
+    # Step 5: Simulation-based inference
+    boot_var <- boot::boot(syn_df, function(data, i) var(data[i, ]$log_change_obs), R = 100)
+    var_ci <- quantile(boot_var$t, c(0.025, 0.975), na.rm = TRUE)
+
+    sim_pars <- expand.grid(
+      v_ind = seq(0, 4, 0.25),
+      b = seq(-1, 1, 0.05),
+      v_err = v_err,
+      v_pop = v_pop
+    )
+
+    test.slopes <- function(v_pop, v_ind, v_err, b) {
+      x <- rnorm(n, 0, sqrt(v_pop))
+      change <- b * scale(x)[, 1] + rnorm(n, 0, sqrt(v_ind))
+      final <- x + change
+      e1 <- rnorm(n, 0, sqrt(v_err))
+      e2 <- rnorm(n, 0, sqrt(v_err))
+      x_obs <- x + e1
+      y_obs <- final + e2
+      change_obs <- y_obs - x_obs
+      est <- coef(lm(change_obs ~ scale(x_obs)))[2]
+      tibble(est = est, b = b, v_ind = v_ind)
+    }
+
+    sim_results <- purrr::pmap_dfr(sim_pars, test.slopes)
+    slope_bounds <- confint(obs_fit)["scale(log_init_obs)", ]
+
+    sim_filtered <- sim_results %>%
+      filter(est > slope_bounds[1], est < slope_bounds[2]) %>%
+      filter(v_ind + b^2 + 2 * v_err >= var_ci[1],
+             v_ind + b^2 + 2 * v_err <= var_ci[2])
+
+    b_sim <- mean(sim_filtered$b, na.rm = TRUE)
+
+    tibble(
+      b_obs = b_obs,
+      b_blomq = b_blomq,
+      b_kp = b_kp,
+      b_sim = b_sim,
+      b_true = b_true
+    )
+  })
+
+  # Summarize results across replicates using `across()`
+  summarised <- replicate_results %>%
+    summarise(across(
+      .cols = c(b_obs, b_blomq, b_kp, b_sim),
+      .fns = list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd   = ~ sd(.x, na.rm = TRUE),
+        mae  = ~ mean(abs(.x - b_true), na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )) %>%
+    mutate(
+      b_true = b_true,
+      v_ind = v_ind,
+      v_err = v_err
+    )
+
+  return(summarised)
 }
+
+
 
 
 
@@ -1430,27 +1451,76 @@ plan(multisession)
 results_all <- future_pmap_dfr(param_grid, evaluate_methods)
 
 
-
+# Pivot to long format for plotting
 results_long <- results_all %>%
   pivot_longer(
-    cols = c(b_obs, b_kp, b_blomq, b_sim),  # exclude b_true
+    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean, b_sim_mean),
     names_to = "method",
     values_to = "estimate"
   ) %>%
-  mutate(error = estimate - b_true)
+  mutate(
+    sd = case_when(
+      method == "b_obs_mean"    ~ b_obs_sd,
+      method == "b_kp_mean"     ~ b_kp_sd,
+      method == "b_blomq_mean"  ~ b_blomq_sd,
+      method == "b_sim_mean"    ~ b_sim_sd
+    ),
+    error = estimate - b_true
+  )
 
-ggplot(results_long, aes(x = b_true, y = error, color = method, shape = method)) +
-  #geom_point(alpha = 0.6) +
-  geom_line(alpha = 0.6) +
+# # Plot mean ± SD estimates
+# ggplot(results_long, aes(x = b_true, y = error, color = method, shape = method)) +
+#   #geom_point(size = 2, alpha = 0.8) +
+#   geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
+#   geom_line(aes(group = method), linewidth = 0.6, alpha = 0.7) +
+#   geom_abline(slope = 0, intercept = 0, linetype = "dashed", color = "black") +
+#   facet_grid(v_ind ~ v_err, labeller = label_both) +
+#   labs(
+#     y = "Estimated slope (mean ± SD)",
+#     x = "True slope (b)",
+#     title = "Comparison of Slope Estimates Across Methods and Parameter Space"
+#   ) +
+#   theme_minimal(base_size = 14) +
+#   coord_cartesian(ylim = c(-0.5, 0.5))
+# 
+# 
+# write_csv(results_long, "results_long.csv")
+
+# Prepare data
+results_plot <- results_long %>%
+  mutate(
+    shape = case_when(
+      error > 0.4  ~ 2,  # triangle up
+      error < -0.4 ~ 6,  # triangle down
+      TRUE         ~ 16   # circle
+    ),
+    error_clipped = pmax(pmin(error, 0.4), -0.4)
+  )
+
+# Plot
+ggplot(results_plot, aes(x = b_true, y = error_clipped, color = method, group = method)) +
+  geom_line(linewidth = 0.5, alpha = 0.6) +
+  geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
+  geom_point(aes(shape = factor(shape)), size = 2, fill = "white") +
+  scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
   geom_hline(yintercept = 0, linetype = "dashed") +
   facet_grid(v_ind ~ v_err, labeller = label_both) +
-  labs(y = "Error in estimated slope", x = "True slope (b)") +
-  coord_cartesian(ylim = c(-1, 1))
+  coord_cartesian(ylim = c(-0.4, 0.4)) +
+  labs(x = "True slope (b)", y = "Slope error (estimate - true)", color = "Method") +
+  theme_minimal(base_size = 14)
 
 
-results_long %>%
-  group_by(method) %>%
-  summarize(mean_error = mean(abs(error), na.rm = TRUE))
+
+
+ggplot(results_long, aes(x = method, y = error, fill = method)) +
+  geom_violin(trim = TRUE, scale = "area", width = 5) +
+  #geom_boxplot(width = 0.1, color = "black", fill = "white") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(y = "Slope error", x = NULL) +
+  theme_minimal() +
+  coord_cartesian(ylim = c(-2, 2))
+
+
 ```
 
 
