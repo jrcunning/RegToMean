@@ -9,7 +9,7 @@ output:
     toc_depth: 2
     theme: default  # or "lumen", "flatly", etc.
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -673,11 +673,14 @@ pdam_b_obs <- coef(pdam_mod)[[2]]      # -0.37 (observed slope)
 pdam_b_obs_ci <- confint(pdam_mod)[2,]   # 95% confidence interval for observed slope
 # Variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+
 # Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
 pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
 pdam_v_pop_abs <- pdam_var_x_abs - pdam_v_err_abs       # Initial true trait value variance (subtract measurement error var)
 pdam_v_err_rel <- pdam_v_err_abs / pdam_v_pop_abs       # Measurement error variance on relative scale
                                          # i.e., relative to v_pop since v_pop standardized to 1 in simulations
+pdam_var_x_rel <- pdam_var_x_abs / pdam_v_pop_abs
+
 # Variance in observed change, rescaled relative to v_pop
 pdam_var_y_abs <- var(pdam$log_change_obs, na.rm = TRUE)
 pdam_var_y_rel <- pdam_var_y_abs / pdam_v_pop_abs
@@ -717,7 +720,7 @@ pdam_b_kp_ci <- confint(pdam_mod_adj)[2,]
 # ----------------------------------------------
 # 3. Blomqvist-adjusted slope for Pdam dataset
 # BLOMQVIST POINT ESTIMATE using scaled predictor
-k <- 2 * pdam_v_err_rel                   
+k <- pdam_v_err_abs / pdam_var_x_abs 
 pdam_b_blomq <- (pdam_b_obs + k) / (1 - k)
 # Bootstrap function (recomputes Blomqvist-corrected slope from resampled data)
 blomqvist_boot_scaled <- function(data, indices) {
@@ -1138,8 +1141,7 @@ evaluate_methods <- function(b_true, v_ind, v_err, v_pop, reps, n, nsim, seed) {
     b_kp <- coef(kp_fit)[[2]]
     
     # Blomqvist adjusted slope
-    v_err_rel <- v_err / v_pop
-    k <- 2 * v_err_rel
+    k <- v_err / (v_pop + v_err)
     b_blomq <- (b_obs + k) / (1 - k)
 
     # Simulation-based inference
@@ -1283,13 +1285,13 @@ param_grid <- param_grid %>%
 
 
 # Apply function to each grid row (in parallel)
-# plan(multisession)
-# results_grid <- future_pmap_dfr(
-#   param_grid,
-#   evaluate_methods,
-#   .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
-# )
-#saveRDS(results_grid, file = "results_grid.rds")
+plan(multisession)
+results_grid <- future_pmap_dfr(
+  param_grid,
+  evaluate_methods,
+  .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
+)
+saveRDS(results_grid, file = "results_grid.rds")
 results_grid <- readRDS("results_grid.rds")
 
 # Pivot to long format for plotting
@@ -1310,6 +1312,8 @@ results_long <- results_grid %>%
   )
 
 # # Plot mean ± SD estimates
+#results_long$v_ind <- factor(results_long$v_ind, levels = rev(sort(unique(results_long$v_ind))))
+
 ggplot(results_long, aes(
   x = b_true,
   y = pmax(pmin(error, 0.4), -0.4),
@@ -1339,6 +1343,14 @@ ggplot(results_long, aes(
   ) +
   theme_minimal(base_size = 14)
 
+
+
+ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape = method)) +
+  #geom_point() +
+  geom_ribbon(aes(ymin = b_true + error - sd, ymax = b_true + error + sd, fill = method), alpha = 0.5, color = NA) +
+  #geom_line(aes(group = method)) +
+  geom_abline(slope = 1, intercept = 0, lty = 2) +
+  facet_grid(v_ind ~ v_err, labeller = label_both)
 ```
 
 * Observed relationships are highly subject to spurious negative overestimation, which worsens as measurement error increases.
