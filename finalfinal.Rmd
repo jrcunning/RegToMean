@@ -1120,7 +1120,7 @@ evaluate_methods <- function(b_true, v_ind, v_err, v_pop, reps, n, nsim, seed) {
 
     # Simulate data
     log_init_true <- rnorm(n, 0, sqrt(v_pop))
-    log_change_true <- b_true * scale(log_init_true)[, 1] + rnorm(n, 0, sqrt(v_ind))
+    log_change_true <- b_true * log_init_true + rnorm(n, 0, sqrt(v_ind))
     log_final_true <- log_init_true + log_change_true
     e_init <- rnorm(n, 0, sqrt(v_err))
     e_final <- rnorm(n, 0, sqrt(v_err))
@@ -1133,11 +1133,11 @@ evaluate_methods <- function(b_true, v_ind, v_err, v_pop, reps, n, nsim, seed) {
       mutate(log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
 
     # Observed slope
-    obs_fit <- lm(log_change_obs ~ scale(log_init_obs), data = syn_df)
+    obs_fit <- lm(log_change_obs ~ log_init_obs, data = syn_df)
     b_obs <- coef(obs_fit)[[2]]
     
     # Kelly-Price adjusted slope
-    kp_fit <- lm(log_change_obs_adj ~ scale(log_init_obs), data = syn_df)
+    kp_fit <- lm(log_change_obs_adj ~ log_init_obs, data = syn_df)
     b_kp <- coef(kp_fit)[[2]]
     
     # Blomqvist adjusted slope
@@ -1158,19 +1158,19 @@ evaluate_methods <- function(b_true, v_ind, v_err, v_pop, reps, n, nsim, seed) {
     
     test.slopes <- function(v_pop, v_ind, v_err, b) {
       x <- rnorm(nsim, 0, sqrt(v_pop))
-      change <- b * scale(x)[, 1] + rnorm(nsim, 0, sqrt(v_ind))
+      change <- b * x + rnorm(nsim, 0, sqrt(v_ind))
       final <- x + change
       e1 <- rnorm(nsim, 0, sqrt(v_err))
       e2 <- rnorm(nsim, 0, sqrt(v_err))
       x_obs <- x + e1
       y_obs <- final + e2
       change_obs <- y_obs - x_obs
-      est <- coef(lm(change_obs ~ scale(x_obs)))[2]
+      est <- coef(lm(change_obs ~ x_obs))[2]
       tibble(est = est, b = b, v_ind = v_ind)
     }
     
     sim_results <- purrr::pmap_dfr(sim_pars, test.slopes)
-    slope_bounds <- confint(obs_fit)["scale(log_init_obs)", ]
+    slope_bounds <- confint(obs_fit)["log_init_obs", ]
 
     sim_filtered <- sim_results %>%
       mutate(var_sim = v_ind + b^2 + 2 * v_err) %>%
