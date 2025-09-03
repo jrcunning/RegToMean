@@ -76,6 +76,16 @@ rttm.adj <- function(m1, m2){
 }
 
 
+# Function to adjust y values using Blomqvist-adjusted slope
+blomqvist_pseudo_exact <- function(x, y, b_blom) {
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  e <- resid(lm(y ~ x))                 # orthogonal to 1 and x
+  a <- mean(y) - b_blom * mean(x)       # preserve mean
+  a + b_blom * x + e
+}
+
+
 
 ## GGplot var.test
 stat_var_test <- function(mapping = NULL, data = NULL,
@@ -192,8 +202,8 @@ library(patchwork)
 library(grid)
 
 annotated_panel_plot <- function(plots) {
-  if (length(plots) != 8) {
-    stop("You must supply a list of exactly 8 plots.")
+  if (length(plots) != 10) {
+    stop("You must supply a list of exactly 10 plots.")
   }
 
   # Pull parameter values from global environment
@@ -208,8 +218,8 @@ annotated_panel_plot <- function(plots) {
                        "; v_err = ", signif(v_err, 3))
 
   # Arrange plots in 2×4 grid
-  plot_grid <- (plots[[1]] | plots[[2]] | plots[[3]] | plots[[4]]) /
-               (plots[[5]] | plots[[6]] | plots[[7]] | plots[[8]])
+  plot_grid <- (plots[[1]] | plots[[6]] | plots[[2]] | plots[[7]]) /
+               (plots[[3]] | plots[[8]] | plots[[9]] | plots[[10]])
 
   # Add spacer row for annotations
   plot_with_spacer <- plot_spacer() / plot_grid +
@@ -233,6 +243,8 @@ annotated_panel_plot <- function(plots) {
   grid.text("Change vs. Initial", x = 0.57, y = 0.92, just = "left",
             gp = gpar(fontsize = 13, fontface = "bold"))
   grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
+            gp = gpar(fontsize = 13, fontface = "bold"))
+  grid.text("Blomq Adjusted", x = 0.88, y = 0.92, just = "left",
             gp = gpar(fontsize = 13, fontface = "bold"))
 
   # Row labels
@@ -258,7 +270,7 @@ annotated_panel_plot <- function(plots) {
 n <- 1000
 
 # Set variances
-v_pop <- 1
+v_pop <- 1         # true variance in initial trait values
 
 # Total change variance is 1 (= v_ind + 2 * v_err); error contributes 99% of total
 v_ind <- 0.01
@@ -283,8 +295,16 @@ df1 <- tibble(
 
 # Apply Kelly Price correction to true values and observed values
 df1 <- df1 %>% mutate(
-  log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
-  log_change_obs_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+  log_change_true_kp_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+  log_change_obs_kp_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
+)
+
+# Apply Blomqvist correction
+k <- v_err / (v_pop + v_err)
+b_blomq <- (coef(lm(log_change_obs ~ log_init_obs, data = df1))[2] + k) / (1 - k)
+df1 <- df1 %>% mutate(
+  log_change_true_blomq_adj = blomqvist_pseudo_exact(log_init_true, log_final_true, b_blomq),
+  log_change_obs_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq)
 )
 
 # ## Compute plot limit values
@@ -318,22 +338,28 @@ p3 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
   coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange), 
               ylim = c(-max_abs_initchange, max_abs_initchange))
 
-# Plot 4: ADJUSTED TRUE change vs. initial scatterplot
-p4 <- p3 + aes(x = log_init_true, y = log_change_true_adj)
+# Plot 4: KP-ADJUSTED TRUE change vs. initial scatterplot
+#p4 <- p3 + aes(x = log_init_true, y = log_change_true_kp_adj)
 
-# Plot 5: OBSERVED Chiolero style
-p5 <- chiolero_plot(df1, log_init_obs, log_final_obs)
+# Plot 5: BLOM-adjusted TRUE change vs. initial scatterplot
+#p5 <- p3 + aes(x = log_init_true, y = log_change_true_blomq_adj)
 
-# Plot 6: OBSERVED final vs. initial scatterplot
-p6 <- p2 + aes(x = log_init_obs, y = log_final_obs)
+# Plot 6: OBSERVED Chiolero style
+p6 <- chiolero_plot(df1, log_init_obs, log_final_obs)
 
-# Plot 7: OBSERVED change vs. initial scatterplot
-p7 <- p3 + aes(x = log_init_obs, y = log_change_obs)
+# Plot 7: OBSERVED final vs. initial scatterplot
+p7 <- p2 + aes(x = log_init_obs, y = log_final_obs)
 
-# Plot 8: ADJUSTED OBSERVED change vs. initial scatterplot
-p8 <- p4 + aes(x = log_init_obs, y = log_change_obs_adj)
+# Plot 8: OBSERVED change vs. initial scatterplot
+p8 <- p3 + aes(x = log_init_obs, y = log_change_obs)
 
-plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8)
+# Plot 9: KP-ADJUSTED OBSERVED change vs. initial scatterplot
+p9 <- p4 + aes(x = log_init_obs, y = log_change_obs_kp_adj)
+
+# Plot 10: BLOM-ADJUSTED change vs. initial scatterplot
+p10 <- p4 + aes(x = log_init_obs, y = log_change_obs_blomq_adj)
+
+plots1 <- list(p1, p2, p3, plot.new(), plot.new(), p6, p7, p8, p9, p10)
 
 annotated_panel_plot(plots1)
 ```
