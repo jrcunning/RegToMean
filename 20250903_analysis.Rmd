@@ -1153,7 +1153,7 @@ results_grid <- readRDS("results_grid.rds")
 # Pivot to long format for plotting
 results_long <- results_grid %>%
   pivot_longer(
-    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean, b_sim_mean),
+    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean),
     names_to = "method",
     values_to = "estimate"
   ) %>%
@@ -1162,7 +1162,7 @@ results_long <- results_grid %>%
       method == "b_obs_mean"    ~ b_obs_sd,
       method == "b_kp_mean"     ~ b_kp_sd,
       method == "b_blomq_mean"  ~ b_blomq_sd,
-      method == "b_sim_mean"    ~ b_sim_sd
+      #method == "b_sim_mean"    ~ b_sim_sd
     ),
     error = estimate - b_true
   )
@@ -1209,9 +1209,6 @@ ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape =
   facet_grid(v_ind ~ v_err, labeller = label_both)
 ```
 
-* Observed relationships are highly subject to spurious negative overestimation, which worsens as measurement error increases.
+* Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
 * Kelly-Price adjustments are highly susceptible to spurious positive overestimation, especially when the true relationship is negative, and as v_ind increases. 
-* Blomqvist adjustments are highly susceptible to spurious positive overestimation, especially when the true slope is positive, and as v_err increases.
-* The simulation-inferred slopes **consistently recover the accurate true relationship across all datasets.**
-
-Ideas: bring in another dataset from Kelly and Price that was dismissed as RTM and test with simulation based approach?
+* Blomqvist adjustments **consistently recover the accurate true relationship across all datasets.**
