@@ -75,6 +75,11 @@ rttm.adj <- function(m1, m2){
   return(out)
 }
 
+# Function go get Blomqvist-adjusted slope
+blomqvist_b <- function(b_obs, k) {
+  (b_obs + k) / (1 - k)
+}
+
 
 # Function to adjust y values using Blomqvist-adjusted slope
 blomqvist_pseudo_exact <- function(x, y, b_blom) {
@@ -202,8 +207,8 @@ library(patchwork)
 library(grid)
 
 annotated_panel_plot <- function(plots) {
-  if (length(plots) != 10) {
-    stop("You must supply a list of exactly 10 plots.")
+  if (length(plots) != 9) {
+    stop("You must supply a list of exactly 9 plots.")
   }
 
   # Pull parameter values from global environment
@@ -218,44 +223,40 @@ annotated_panel_plot <- function(plots) {
                        "; v_err = ", signif(v_err, 3))
 
   # Arrange plots in 2×4 grid
-  plot_grid <- (plots[[1]] | plots[[6]] | plots[[2]] | plots[[7]]) /
-               (plots[[3]] | plots[[8]] | plots[[9]] | plots[[10]])
+  plot_grid <- cowplot::plot_grid(
+    plots[[1]], plots[[2]], plots[[3]], plots[[4]], NULL,
+    plots[[5]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
+    ncol = 5,
+    align = "hv"
+  )
 
   # Add spacer row for annotations
   plot_with_spacer <- plot_spacer() / plot_grid +
     plot_layout(heights = c(0.05, 1))
 
-  # Add subplot tags
-  final_plot <- plot_with_spacer +
-    plot_annotation(tag_levels = 'A') &
-    theme(plot.tag = element_text(size = 12, face = "bold"))
-
   # Print the plot layout
-  print(final_plot)
+  print(plot_with_spacer)
 
   # Top-left title
   grid.text(title_text, x = 0, y = 0.975, just = "left",
             gp = gpar(fontsize = 13, fontface = "bold"))
 
-  # Column headers
-  grid.text("Initial & Final Values", x = 0.2, y = 0.92, just = "left",
-            gp = gpar(fontsize = 13, fontface = "bold"))
-  grid.text("Change vs. Initial", x = 0.57, y = 0.92, just = "left",
-            gp = gpar(fontsize = 13, fontface = "bold"))
-  grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
-            gp = gpar(fontsize = 13, fontface = "bold"))
-  grid.text("Blomq Adjusted", x = 0.88, y = 0.92, just = "left",
-            gp = gpar(fontsize = 13, fontface = "bold"))
-
-  # Row labels
-  grid.text("True values", x = 0.01, y = 0.675, rot = 90,
-            gp = gpar(fontsize = 13, fontface = "bold"))
-  grid.text("Observed values", x = 0.01, y = 0.25, rot = 90,
-            gp = gpar(fontsize = 13, fontface = "bold"))
+  # # Column headers
+  # grid.text("Initial & Final Values", x = 0.2, y = 0.92, just = "left",
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+  # grid.text("Change vs. Initial", x = 0.57, y = 0.92, just = "left",
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+  # grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+  # grid.text("Blomq Adjusted", x = 0.88, y = 0.92, just = "left",
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+  # 
+  # # Row labels
+  # grid.text("True values", x = 0.01, y = 0.675, rot = 90,
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+  # grid.text("Observed values", x = 0.01, y = 0.25, rot = 90,
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
 }
-
-
-
 ```
 
 
@@ -279,89 +280,135 @@ v_err <- 0.495    # 0.99/2
 # No true relationship to initial value
 b <- 0
 
-# Simulate data
-set.seed(1)
-df1 <- tibble(
-  log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
-  log_change_true = rnorm(n, mean = 0, sd = sqrt(v_ind)),        # Independent 0 change plus individual response variation
-  # Later: Check if FINAL can be simulated to then derive change, and if this is equivalent
-  log_final_true = log_init_true + log_change_true,           # Final = initial + change
-  e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),          # Random measurement error for initial values
-  e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),         # Random measurement error for final values
-  log_init_obs = log_init_true + e_init,          # Add random measurement error to initial values
-  log_final_obs = log_final_true + e_final,       # Add random measurement error to final values
-  log_change_obs = log_final_obs - log_init_obs   # Observed change
-)  
+run_simulation_scenario <- function(
+  n, b, v_ind, v_err, v_pop = 1, seed = 1
+) {
+  set.seed(seed)
 
-# Apply Kelly Price correction to true values and observed values
-df1 <- df1 %>% mutate(
-  log_change_true_kp_adj = rttm.adj(log_init_true, log_final_true)[, 3],
-  log_change_obs_kp_adj = rttm.adj(log_init_obs, log_final_obs)[, 3]
-)
+  # --- 1) Simulate ---
+  df1 <- tibble(
+    log_init_true  = rnorm(n, 0, sqrt(v_pop)),
+    log_change_true = b * log_init_true + rnorm(n, 0, sqrt(v_ind)),
+    log_final_true = log_init_true + log_change_true,
+    e_init  = rnorm(n, 0, sqrt(v_err)),
+    e_final = rnorm(n, 0, sqrt(v_err)),
+    log_init_obs  = log_init_true  + e_init,
+    log_final_obs = log_final_true + e_final,
+    log_change_obs = log_final_obs - log_init_obs
+  )
 
-# Apply Blomqvist correction
-k <- v_err / (v_pop + v_err)
-b_blomq <- (coef(lm(log_change_obs ~ log_init_obs, data = df1))[2] + k) / (1 - k)
-df1 <- df1 %>% mutate(
-  log_change_true_blomq_adj = blomqvist_pseudo_exact(log_init_true, log_final_true, b_blomq),
-  log_change_obs_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq)
-)
+  # --- 2) Observed slope + CI ---
+  fit_obs <- lm(log_change_obs ~ log_init_obs, data = df1)
+  b_obs   <- coef(fit_obs)[2]
+  b_obs_confint <- confint(fit_obs)[2, ]
 
-# ## Compute plot limit values
-max_abs_initfinal <- df1 %>%
-  select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
-max_abs_initchange <- df1 %>%
-  select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
-  summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
-  pull(max_abs)
+  # --- 3) Kelly–Price (point + bootstrap CI) ---
+  kp_full <- rttm.adj(df1$log_init_obs, df1$log_final_obs)
+  b_kp_adj <- coef(lm(kp_full$adj.growth ~ df1$log_init_obs))[2]
 
-# Plot 1: TRUE Chiolero style initial and final values, timepoints on x-axis
-p1 <- chiolero_plot(df1, log_init_true, log_final_true)
+  set.seed(seed + 100)
+  kp_boot <- boot::boot(
+    data = df1,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      kp <- rttm.adj(di$log_init_obs, di$log_final_obs)
+      coef(lm(kp$adj.growth ~ di$log_init_obs))[2]
+    },
+    R = 2000
+  )
+  b_kp_adj_confint_boot <- stats::quantile(kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
-# Plot 2: TRUE final vs. initial scatterplot
-p2 <- ggplot(df1, aes(x = log_init_true, y = log_final_true)) +
-  geom_point(alpha = 0.2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
-  geom_smooth(method = "lm", se = FALSE) +
-  coord_fixed(xlim = c(-max_abs_initfinal, max_abs_initfinal), 
-              ylim = c(-max_abs_initfinal, max_abs_initfinal))
+  # --- 4) Blomqvist (point + bootstrap CI) ---
+  k <- v_err / (v_pop + v_err)
+  b_blomq_adj <- blomqvist_b(b_obs, k)
 
-# Plot 3: TRUE change vs. initial scatterplot
-p3 <- ggplot(df1, aes(x = log_init_true, y = log_change_true)) +
-  geom_point(alpha = 0.2) +
-  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
-  stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
-  geom_smooth(method = "lm", se = FALSE) +
-  coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange), 
-              ylim = c(-max_abs_initchange, max_abs_initchange))
+  # pseudo-exact y’ (used only for plotting panel, not for CI)
+  df1 <- df1 %>%
+    dplyr::mutate(
+      log_change_kp_adj    = kp_full$adj.growth,
+      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq_adj)
+    )
 
-# Plot 4: KP-ADJUSTED TRUE change vs. initial scatterplot
-#p4 <- p3 + aes(x = log_init_true, y = log_change_true_kp_adj)
+  set.seed(seed + 200)
+  blomqvist_boot <- boot::boot(
+    data = df1,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      b_i <- coef(lm(log_change_obs ~ log_init_obs, data = di))[2]
+      blomqvist_b(b_i, k)
+    },
+    R = 2000
+  )
+  b_blomq_adj_confint_boot <- stats::quantile(blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
-# Plot 5: BLOM-adjusted TRUE change vs. initial scatterplot
-#p5 <- p3 + aes(x = log_init_true, y = log_change_true_blomq_adj)
+  # --- 5) Slopes tibble ---
+  slopes_tbl <- tibble::tibble(
+    method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
+    estimate = c(b_obs, b_kp_adj, b_blomq_adj),
+    ci_lower = c(b_obs_confint[1], b_kp_adj_confint_boot[1], b_blomq_adj_confint_boot[1]),
+    ci_upper = c(b_obs_confint[2], b_kp_adj_confint_boot[2], b_blomq_adj_confint_boot[2])
+  )
 
-# Plot 6: OBSERVED Chiolero style
-p6 <- chiolero_plot(df1, log_init_obs, log_final_obs)
+  # --- 6) Axis ranges for plots ---
+  max_abs_initfinal <- df1 %>%
+    dplyr::select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+    dplyr::summarise(max_abs = max(abs(dplyr::c_across(everything())), na.rm = TRUE)) %>%
+    dplyr::pull(max_abs)
 
-# Plot 7: OBSERVED final vs. initial scatterplot
-p7 <- p2 + aes(x = log_init_obs, y = log_final_obs)
+  max_abs_initchange <- df1 %>%
+    dplyr::select(log_init_true, log_change_true, log_init_obs, log_change_obs) %>%
+    dplyr::summarise(max_abs = max(abs(dplyr::c_across(everything())), na.rm = TRUE)) %>%
+    dplyr::pull(max_abs)
 
-# Plot 8: OBSERVED change vs. initial scatterplot
-p8 <- p3 + aes(x = log_init_obs, y = log_change_obs)
+  # --- 7) Plots (uses your existing helpers: chiolero_plot, annotated_panel_plot) ---
+  p1 <- chiolero_plot(df1, log_init_true,  log_final_true)  + ggtitle("True")
+  p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)   + ggtitle("Observed")
 
-# Plot 9: KP-ADJUSTED OBSERVED change vs. initial scatterplot
-p9 <- p4 + aes(x = log_init_obs, y = log_change_obs_kp_adj)
+  p3 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_final_true)) +
+    ggplot2::geom_point(alpha = 0.2) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    ggplot2::geom_smooth(method = "lm", se = FALSE) +
+    ggplot2::coord_fixed(xlim = c(-max_abs_initfinal, max_abs_initfinal),
+                         ylim = c(-max_abs_initfinal, max_abs_initfinal)) +
+    ggtitle("True")
 
-# Plot 10: BLOM-ADJUSTED change vs. initial scatterplot
-p10 <- p4 + aes(x = log_init_obs, y = log_change_obs_blomq_adj)
+  p4 <- p3 + ggplot2::aes(x = log_init_obs, y = log_final_obs) + ggtitle("Observed")
 
-plots1 <- list(p1, p2, p3, plot.new(), plot.new(), p6, p7, p8, p9, p10)
+  p5 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_change_true)) +
+    ggplot2::geom_point(alpha = 0.2) +
+    ggplot2::geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    ggplot2::geom_smooth(method = "lm", se = FALSE) +
+    ggplot2::coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange),
+                         ylim = c(-max_abs_initchange, max_abs_initchange)) +
+    ggtitle("True")
 
-annotated_panel_plot(plots1)
+  p6 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_obs) + ggtitle("Observed")
+  p7 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_kp_adj) + ggtitle("Kelly-Price")
+  p8 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_blomq_adj) + ggtitle("Blomqvist")
+
+  p9 <- ggplot2::ggplot(slopes_tbl, ggplot2::aes(x = method, y = estimate)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
+    ggplot2::geom_hline(yintercept = b, linetype = 2) +
+    ggplot2::labs(x = NULL, y = "Slope")
+
+  plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9)
+
+  # Optional: assemble your panel externally with annotated_panel_plot(plots1)
+  list(
+    data = df1,
+    slopes = slopes_tbl,
+    plots = plots1,
+    boot = list(kelly_price = kp_boot, blomqvist = blomqvist_boot)
+  )
+}
+
+s1.1_results <- run_simulation_scenario(
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
+
+annotated_panel_plot(s1.1_results$plots)
 ```
 
 * **G** confirms spurious negative relationship between observed change and initial is due to measurement error (compare to **C**, true values)
@@ -379,7 +426,7 @@ v_err <- 0.005    # 0.01/2
 b <- 0
 
 s1.2_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s1.2_results$plots)
@@ -401,7 +448,7 @@ v_err <- 0.25    # 0.5/2
 b <- 0
 
 s1.3_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s1.3_results$plots)
@@ -434,7 +481,7 @@ b     <- -sqrt(0.98)
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.1_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s2.1_results$plots)
@@ -452,7 +499,7 @@ v_err <- (1/3) / 2  # = 1/6
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.4_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s2.4_results$plots)
@@ -470,7 +517,7 @@ v_err <- (1 - 0.025 - v_ind) / 2  # = 0.4825
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.2_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s2.2_results$plots)
@@ -488,7 +535,7 @@ v_err <- (1 - 0.025 - v_ind) / 2  # = 0.005
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.3_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s2.3_results$plots)
@@ -506,7 +553,7 @@ v_err <- (1 - 0.025 - v_ind) / 2  # = 0.24375
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.4_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop, base_plots = plots1)
+  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
 annotated_panel_plot(s2.4_results$plots)
