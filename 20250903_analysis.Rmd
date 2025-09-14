@@ -1129,22 +1129,4 @@ cowplot::plot_grid(p_lm, p_orth, nrow = 1)
 ```
 
 
-```{r}
-# relationship between observed slope, blomqvist's k, and blomqvist's slope
-library(ggplot2)
 
-b_true <- seq(-1, 1, 0.01) # true slope of -1 means all final trait values are zero, cannot have a lower slope than this
-k_vals <- c(0, 0.1, 0.3, 0.5, 0.7)
-
-df <- expand.grid(b_true = b_true, k = k_vals)
-df$b_obs <- (1 - df$k) * df$b_true - df$k
-
-ggplot(df, aes(x = b_true, y = b_obs, color = factor(k))) +
-  geom_line(size = 1) +
-  geom_abline(slope = 1, intercept = 0, linetype = 3) +
-  labs(x = "True slope of change vs. initial", 
-       y = "Observed slope of change vs. initial", 
-       color = "k (fraction of observed\ntrait variance due to\nmeasurement error)") +
-  theme_bw()
-
-```
