@@ -1,7 +1,7 @@
 ---
 title: "Regression to the mean and the detection of true relationships between change and initial values"
 author: "Ross Cunning"
-date: "2025-09-03"
+date: "2025-09-05"
 output:
   html_document:
     toc: true
@@ -411,8 +411,8 @@ s1.1_results <- run_simulation_scenario(
 annotated_panel_plot(s1.1_results$plots)
 ```
 
-* **G** confirms spurious negative relationship between observed change and initial is due to measurement error (compare to **C**, true values)
-* **H** confirms that Kelly and Price correction yields the true zero relationship
+* Confirms spurious negative relationship between observed change and initial is due to measurement error 
+* Confirms that both Kelly-Price and Blomqvist corrections yield the true zero relationship when the change variance is dominated by measurement error
 
 
 ## 1.2: Individual variance dominates
@@ -432,8 +432,9 @@ s1.2_results <- run_simulation_scenario(
 annotated_panel_plot(s1.2_results$plots)
 ```
 
-* **G** confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean).
-* **D and H** confirm that Kelly-Price adjustment interprets the individual variance as measurement error and attempts to correct for regression to the mean, yielding a spurious positive relationship between change and initial values.
+* Confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean when measurement error is minimal).
+* Confirms that Kelly-Price adjustment interprets the individual variance as measurement error and attempts to correct for regression to the mean, yielding a spurious positive relationship between change and initial values.
+* Blomqvist correction yields the true zero relationship.
 
 ## 1.3: Equal individual variance and measurement error
 
@@ -454,16 +455,17 @@ s1.3_results <- run_simulation_scenario(
 annotated_panel_plot(s1.3_results$plots)
 ```
 
-* **G** confirms again that regression to the mean due to measurement error produces spurious negative relationship between change and initial values.
-* But, **D and H** show that Kelly and Price over-corrects and produces a spurious positive relationship, because it interprets the total change variance as measurement error, when in reality it is a combination of measurement error and individual variance.
+* Confirms again that regression to the mean due to measurement error produces spurious negative relationship between observed change and initial values.
+* Kelly-Price overcorrects and produces a spurious positive relationship, because it interprets the total change variance as measurement error, when in reality it is a combination of measurement error and individual variance.
+* Blomqvist yields the correct zero relationship because it knows exactly how much of the total change variance is due to measurement error.
 
 ## 1.4: Conclusions
 
-**When measurement error dominates, and individual variance is minimal**: Spurious negative relationship in observed change vs. initial; correctly removed by KP adjustment. [spurious negative relationship arises from regression to the mean caused by measurement error]. 
+**When measurement error dominates, and individual variance is minimal**: Spurious negative relationship in observed change vs. initial; correctly removed by KP and Blomqvist adjustments. [spurious negative relationship arises from regression to the mean caused by measurement error]. 
 
 **When individual variance dominates, and measurement error is minimal**: No negative relationship in observed vs. change (correct); and spurious positive relationship arises from KP adjustment. [KP adjustment cannot distinguish individual variance and measurement error, considers all change variance as measurement error and attempts to adjust for regression to the mean; but regression to the mean is not actually happening when there's minimal measurement error]. 
 
-**When individual variance and measurement error contribute equally**: Spurious negative relationship in observed change vs. initial [caused by regression to the mean from measurement error]; AND spurious positive relationship in KP-adjustment [caused by KP OVERestimating measurement error as total change variance]. 
+**When individual variance and measurement error contribute equally**: Spurious negative relationship in observed change vs. initial [caused by regression to the mean from measurement error]; AND spurious positive relationship in KP-adjustment [caused by KP OVERestimating measurement error as total change variance]. Blomqvist gets it right because it knows how much of the change variance is due to measurement error.
 
 
 
@@ -487,25 +489,7 @@ s2.1_results <- run_simulation_scenario(
 annotated_panel_plot(s2.1_results$plots)
 ```
 
-* A true relationship with minimal individual variance or measurement error is reflected accurately in the observed relationship **(G)**. However, Kelly-Price still interprets the variance in change as being due to measurement error, and attempts to correct for regression to the mean, yielding a much weaker relationship **(D and H)**.  
-
-## 2.2: Equal true relationship, individual variance, and measurement error
-```{r s2.2, fig.width = 10, fig.height = 5.5}
-# Equal contribution from all sources
-# Total variance = b² + v_ind + 2*v_err = 1/3 + 1/3 + 1/3 = 1.00
-b     <- -sqrt(1/3)
-v_ind <- 1/3
-v_err <- (1/3) / 2  # = 1/6
-
-# Run the simulation with the base plot templates (your plots1 list)
-s2.4_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
-
-# Plot it
-annotated_panel_plot(s2.4_results$plots)
-```
-
-* Shows same as above, with true relationship slightly overestimated in the observed change vs. initial **(G)**, and Kelly-Price adjustment **(H)** nearly masking the true relationship (though it is still there). What if the true effect is not as strong?
+* A true relationship with minimal individual variance or measurement error is reflected accurately in the observed relationship. However, Kelly-Price still interprets the variance in change as being due to measurement error, and attempts to correct for regression to the mean, yielding a much weaker relationship (almost zero!). Blomqvist gets it right.  
 
 ## 2.3: True relationship with measurement error dominating
 ```{r s2.3, fig.width = 10, fig.height = 5.5}
@@ -523,7 +507,7 @@ s2.2_results <- run_simulation_scenario(
 annotated_panel_plot(s2.2_results$plots)
 ```
 
-* When measurement error dominates along with a true relationship, observed negative relationship is overestimated **(G)** due to RTM, and K-P adjustment nearly masks true relationship (**H**; still there but very weak).
+* When measurement error dominates along with a true relationship, observed negative relationship is overestimated due to RTM, and K-P adjustment nearly masks true relationship (still there but very weak). Blomqvist gets it right.
 
 ## 2.4: True relationship with individual variance dominating
 ```{r s2.4, fig.width = 10, fig.height = 5.5}
@@ -541,7 +525,7 @@ s2.3_results <- run_simulation_scenario(
 annotated_panel_plot(s2.3_results$plots)
 ```
 
-* When individual variance dominates along with a true relationship and measurement error is minimal, the observed relationship (**G**) is accurate, but K-P produces spurious positive relationship **(H)**.
+* When individual variance dominates along with a true relationship and measurement error is minimal, the observed relationship is accurate, but K-P produces spurious positive relationship. Blomqvist gets it right.
 
 ## 2.5: True relationship with equal individual variance and meaurement error
 ```{r s2.5, fig.width = 10, fig.height = 5.5}
@@ -559,7 +543,224 @@ s2.4_results <- run_simulation_scenario(
 annotated_panel_plot(s2.4_results$plots)
 ```
 
-* When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). 
+* When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). Blomqvist gets it right.
+
+# Simulate across range of true relationships, measurement error, and individual change heterogeneity
+
+```{r evaluate_methods_and_1_parset_similar_to_pdam}
+# Create a function that will create synthetic datasets with known true slope and variance structure, and then test the ability of the four estimation methods (observed slope, kelly-price adjusted, blomqvist adjusted, and simulation-inferred) to recover the true slope
+
+evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind, seed) {
+  replicate_results <- purrr::map_dfr(seq_len(reps), function(i) {
+    set.seed(seed + i)  # Unique seed per replicate
+
+    # Simulate data
+    log_init_true <- rnorm(n, 0, sqrt(v_pop))
+    log_change_true <- b_true * log_init_true + rnorm(n, 0, sqrt(v_ind))
+    log_final_true <- log_init_true + log_change_true
+    e_init <- rnorm(n, 0, sqrt(v_err))
+    e_final <- rnorm(n, 0, sqrt(v_err))
+
+    syn_df <- tibble(
+      log_init_obs = log_init_true + e_init,
+      log_final_obs = log_final_true + e_final,
+      log_change_obs = log_final_obs - log_init_obs
+    ) %>%
+      mutate(log_change_kp_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
+
+    # Observed slope
+    obs_fit <- lm(log_change_obs ~ log_init_obs, data = syn_df)
+    b_obs <- coef(obs_fit)[[2]]
+    
+    # Kelly-Price adjusted slope
+    kp_fit <- lm(log_change_kp_adj ~ log_init_obs, data = syn_df)
+    b_kp <- coef(kp_fit)[[2]]
+    
+    # Blomqvist adjusted slope
+    k_blomq <- v_err / (v_pop + v_err)
+    b_blomq <- (b_obs + k_blomq) / (1 - k_blomq)
+    
+    # Results of all estimates
+    tibble(
+      b_obs = b_obs,
+      b_blomq = b_blomq,
+      b_kp = b_kp,
+      b_true = b_true
+    )
+  })
+
+  # Summarize results across replicates using `across()`
+  summarised <- replicate_results %>%
+    summarise(across(
+      .cols = c(b_obs, b_blomq, b_kp),
+      .fns = list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd   = ~ sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )) %>%
+    mutate(
+      b_true = b_true,
+      v_ind = v_ind,
+      v_err = v_err,
+      k = k,
+      v_ind_rel = v_ind_rel
+    )
+
+  return(summarised)
+}
+```
+
+
+
+```{r evaluate_methods_parameter_grid}
+
+# Create parameter grid for testing all slope correction methods
+param_grid <- expand.grid(
+  v_pop = 1,                                        # always standardize to v_pop = 1
+  k = c(0.01, 1/6, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
+  v_ind_rel = c(2, 0.5, 0.01),                      # range of true v_ind in synthetic datasets
+  b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),   # range of true slopes in synthetic datasets
+  reps = 1000,                                       # n replicate synthetic datasets for each parameter set
+  n = 200                    # size of each synthetic dataset (should represent a 'typical' scientific study)
+) 
+
+# Calculate v_err from given measurement precision level
+param_grid <- param_grid %>%
+  mutate(v_err = v_pop * k / (1 - k),
+         v_ind = v_pop * v_ind_rel)
+
+# Each parameter set gets a different seed to use in generating simulated dataset
+set.seed(999)  # for reproducibility of seeds in parameter grid
+param_grid <- param_grid %>%
+  dplyr::mutate(seed = sample.int(1e6, size = dplyr::n(), replace = FALSE))
+
+
+# Apply function to each grid row (in parallel)
+plan(multisession)
+results_grid <- future_pmap_dfr(
+  param_grid,
+  evaluate_methods,
+  .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
+)
+saveRDS(results_grid, file = "results_grid.rds")
+results_grid <- readRDS("results_grid.rds")
+
+# Pivot to long format for plotting
+results_long <- results_grid %>%
+  pivot_longer(
+    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean),
+    names_to = "method",
+    values_to = "estimate"
+  ) %>%
+  mutate(
+    sd = case_when(
+      method == "b_obs_mean"    ~ b_obs_sd,
+      method == "b_kp_mean"     ~ b_kp_sd,
+      method == "b_blomq_mean"  ~ b_blomq_sd
+    ),
+    error = estimate - b_true
+  ) %>%
+  mutate(v_ind = factor(v_ind, levels = c(2, 0.5, 0.01)))
+
+# Facet labeller 
+facet_labeller <- function(labels) {
+  to_num <- function(x) suppressWarnings(as.numeric(as.character(x)))
+  fmt    <- function(x) formatC(x, format = "f", digits = 2)
+
+  if ("k" %in% names(labels)) {
+    k <- to_num(labels$k)
+    k_cat <- ifelse(k <= 0.05, "Very low",
+             ifelse(k <= 0.25, "Moderate",
+             ifelse(k <= 0.50, "High", "Very high")))
+    labels$k <- paste0(k_cat, " (", fmt(k/(1-k)), ")")
+  }
+
+  if ("v_ind" %in% names(labels)) {
+    v <- to_num(labels$v_ind)
+    v_cat <- ifelse(v <= 0.05, "Very low",
+             ifelse(v <= 0.50, "Moderate",
+             ifelse(v <= 2.00, "High", "Extreme")))
+    labels$v_ind <- paste0(v_cat, " (", fmt(v / v_pop), ")")
+  }
+
+  labels
+}
+
+
+ggplot(results_long, aes(
+  x = b_true,
+  y = pmax(pmin(error, 0.4), -0.4),
+  color = method,
+  group = method,
+  shape = factor(ifelse(error > 0.4, 2, ifelse(error < -0.4, 6, 16)))
+)) +
+  geom_line(linewidth = 0.5, alpha = 0.6) +
+  geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
+  geom_point(size = 2, alpha = 0.6) +
+  scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
+  scale_color_discrete(
+    labels = c(
+      b_obs_mean = "Observed",
+      b_blomq_mean = "Blomqvist",
+      b_kp_mean = "Kelly-Price"
+    )
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_grid(v_ind ~ k, labeller = facet_labeller) +
+  coord_cartesian(ylim = c(-0.4, 0.4)) +
+  labs(
+    x = "True slope",
+    y = "Slope error (estimate - true)",
+    color = "Method"
+  ) +
+  theme_minimal(base_size = 12) +
+  scale_x_continuous(
+    sec.axis = sec_axis(~ .,
+                        name = expression(Initial~measurement~error~~(sigma[e]^2/sigma[X]^2)),
+                        breaks = NULL, labels = NULL
+    )
+  ) +
+  scale_y_continuous(
+    sec.axis = sec_axis(~ .,
+                        name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
+                        breaks = NULL, labels = NULL)
+  )
+
+
+
+ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape = method)) +
+  #geom_point() +
+  geom_ribbon(aes(ymin = b_true + error - sd, ymax = b_true + error + sd, fill = method), alpha = 0.5, color = NA) +
+  #geom_line(aes(group = method)) +
+  geom_abline(slope = 1, intercept = 0, lty = 2) +
+  facet_grid(v_ind ~ k, labeller = facet_labeller) +
+  theme_minimal() +
+  scale_fill_discrete(
+    labels = c(
+      b_obs_mean = "Observed",
+      b_blomq_mean = "Blomqvist",
+      b_kp_mean = "Kelly-Price"
+    )
+  ) +
+  scale_x_continuous(
+    sec.axis = sec_axis(~ .,
+                        name = expression(Initial~measurement~error~~(sigma[e]^2/sigma[X]^2)),
+                        breaks = NULL, labels = NULL
+    )
+  ) +
+  scale_y_continuous(
+    sec.axis = sec_axis(~ .,
+                        name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
+                        breaks = NULL, labels = NULL)
+  ) +
+  labs(x = "True slope", y = "Estimated slope")
+```
+
+* Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
+* Kelly-Price adjustments are highly susceptible to spurious positive overestimation, especially when the true relationship is negative, and as v_ind increases. 
+* Blomqvist adjustments **consistently recover the accurate true relationship across all datasets.**
+
 
 # Dataset 1: *P. damicornis* symbiont changes
 
@@ -816,251 +1017,6 @@ cowplot::plot_grid(mill_chiolero_plot, mill_initfinal_plot, NULL, NULL, mill_ini
 
 
 
-# Validation: Synthetic data
-
-```{r evaluate_methods_and_1_parset_similar_to_pdam}
-# Create a function that will create synthetic datasets with known true slope and variance structure, and then test the ability of the four estimation methods (observed slope, kelly-price adjusted, blomqvist adjusted, and simulation-inferred) to recover the true slope
-
-evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind, seed) {
-  replicate_results <- purrr::map_dfr(seq_len(reps), function(i) {
-    set.seed(seed + i)  # Unique seed per replicate
-
-    # Simulate data
-    log_init_true <- rnorm(n, 0, sqrt(v_pop))
-    log_change_true <- b_true * log_init_true + rnorm(n, 0, sqrt(v_ind))
-    log_final_true <- log_init_true + log_change_true
-    e_init <- rnorm(n, 0, sqrt(v_err))
-    e_final <- rnorm(n, 0, sqrt(v_err))
-
-    syn_df <- tibble(
-      log_init_obs = log_init_true + e_init,
-      log_final_obs = log_final_true + e_final,
-      log_change_obs = log_final_obs - log_init_obs
-    ) %>%
-      mutate(log_change_kp_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
-
-    # Observed slope
-    obs_fit <- lm(log_change_obs ~ log_init_obs, data = syn_df)
-    b_obs <- coef(obs_fit)[[2]]
-    
-    # Kelly-Price adjusted slope
-    kp_fit <- lm(log_change_kp_adj ~ log_init_obs, data = syn_df)
-    b_kp <- coef(kp_fit)[[2]]
-    
-    # Blomqvist adjusted slope
-    k_blomq <- v_err / (v_pop + v_err)
-    b_blomq <- (b_obs + k_blomq) / (1 - k_blomq)
-    
-    # Results of all estimates
-    tibble(
-      b_obs = b_obs,
-      b_blomq = b_blomq,
-      b_kp = b_kp,
-      b_true = b_true
-    )
-  })
-
-  # Summarize results across replicates using `across()`
-  summarised <- replicate_results %>%
-    summarise(across(
-      .cols = c(b_obs, b_blomq, b_kp),
-      .fns = list(
-        mean = ~ mean(.x, na.rm = TRUE),
-        sd   = ~ sd(.x, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )) %>%
-    mutate(
-      b_true = b_true,
-      v_ind = v_ind,
-      v_err = v_err,
-      k = k,
-      v_ind_rel = v_ind_rel
-    )
-
-  return(summarised)
-}
-
-
-# # Test the ability of the four estimation methods to recover the true slope for synthetic datasets with the same size (n=42) and variance structure as the Pdam dataset
-# 
-# test_syn_eval <- evaluate_methods(
-#   b_true = -0.855,
-#   v_ind = var(pdam$log_change_obs) - ((-0.855)^2 * (var(pdam$log_init_obs) - pdam_v_err_abs)) - (2 * pdam_v_err_abs),
-#   v_err = pdam_v_err_abs,   # pdam_v_err_abs
-#   v_pop = var(pdam$log_init_obs) - pdam_v_err_abs,   # pdam_v_pop_abs
-#   reps = 1000,      # number of replicate synthetic datasets of size n that will be simulated and tested
-#   n = 42,         # size of synthetic dataset to be tested
-#   seed = 123     # base seed that will have +i for all synthetic dataset reps 1:i
-# )
-# 
-# # Plot outcomes
-# # Tidy the summary output
-# plot_df <- test_syn_eval %>%
-#   pivot_longer(
-#     cols = c(b_obs_mean, b_blomq_mean, b_kp_mean,
-#              b_obs_sd, b_blomq_sd, b_kp_sd),
-#     names_to = c("method", ".value"),
-#     names_pattern = "b_(.*)_(mean|sd)"
-#   ) %>%
-#   mutate(
-#     method = recode(method,
-#       "obs"   = "Observed",
-#       "blomq" = "Blomqvist Corrected",
-#       "kp"    = "Kelly-Price Adjusted"
-#     ),
-#     method = factor(method, levels = c(
-#       "Observed", "Blomqvist Corrected", "Kelly-Price Adjusted"
-#     ))
-#   )
-# 
-# # Plot the mean estimate ±1 SD for each method
-# ggplot(plot_df, aes(x = method, y = mean)) +
-#   geom_point(size = 3) +
-#   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2) +
-#   geom_hline(yintercept = test_syn_eval$b_true, linetype = "dashed", color = "blue") +
-#   annotate("text", x = 4.5, y = test_syn_eval$b_true, label = "True slope", hjust = 1,
-#            vjust = -0.5, color = "blue", fontface = "italic") +
-#   labs(
-#     title = "Performance of Slope Estimators on Synthetic Dataset",
-#     y = "Estimated slope (mean ± SD)",
-#     x = NULL
-#   ) +
-#   coord_flip(clip = "off") +
-#   theme_minimal(base_size = 14)
-
-```
-
-So for datasets like the Pdam dataset, the simulation-inferred estimate is the best estimate of the true underlying relationship. 
-
-What about for more diverse datasets with varying true relationships, v_err, and v_ind? Evaluate the methods over a whole parameter grid.
-
-```{r evaluate_methods_parameter_grid}
-
-# Create parameter grid for testing all slope correction methods
-param_grid <- expand.grid(
-  v_pop = 1,                                        # always standardize to v_pop = 1
-  k = c(0.01, 1/6, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
-  v_ind_rel = c(2, 0.5, 0.01),                      # range of true v_ind in synthetic datasets
-  b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),   # range of true slopes in synthetic datasets
-  reps = 1000,                                       # n replicate synthetic datasets for each parameter set
-  n = 200                    # size of each synthetic dataset (should represent a 'typical' scientific study)
-) 
-
-# Calculate v_err from given measurement precision level
-param_grid <- param_grid %>%
-  mutate(v_err = v_pop * k / (1 - k),
-         v_ind = v_pop * v_ind_rel)
-
-# Each parameter set gets a different seed to use in generating simulated dataset
-set.seed(999)  # for reproducibility of seeds in parameter grid
-param_grid <- param_grid %>%
-  dplyr::mutate(seed = sample.int(1e6, size = dplyr::n(), replace = FALSE))
-
-
-# Apply function to each grid row (in parallel)
-plan(multisession)
-results_grid <- future_pmap_dfr(
-  param_grid,
-  evaluate_methods,
-  .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
-)
-saveRDS(results_grid, file = "results_grid.rds")
-results_grid <- readRDS("results_grid.rds")
-
-# Pivot to long format for plotting
-results_long <- results_grid %>%
-  pivot_longer(
-    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean),
-    names_to = "method",
-    values_to = "estimate"
-  ) %>%
-  mutate(
-    sd = case_when(
-      method == "b_obs_mean"    ~ b_obs_sd,
-      method == "b_kp_mean"     ~ b_kp_sd,
-      method == "b_blomq_mean"  ~ b_blomq_sd
-    ),
-    error = estimate - b_true
-  )
-
-# Facet labeller 
-facet_labeller <- function(labels) {
-  to_num <- function(x) suppressWarnings(as.numeric(as.character(x)))
-  fmt    <- function(x) formatC(x, format = "f", digits = 2)
-
-  if ("k" %in% names(labels)) {
-    k <- to_num(labels$k)
-    k_cat <- ifelse(k <= 0.05, "Very low",
-             ifelse(k <= 0.25, "Moderate",
-             ifelse(k <= 0.50, "High", "Very high")))
-    labels$k <- paste0(k_cat, " (", fmt(k/(1-k)), ")")
-  }
-
-  if ("v_ind" %in% names(labels)) {
-    v <- to_num(labels$v_ind)
-    v_cat <- ifelse(v <= 0.05, "Very low",
-             ifelse(v <= 0.50, "Moderate",
-             ifelse(v <= 2.00, "High", "Extreme")))
-    labels$v_ind <- paste0(v_cat, " (", fmt(v / v_pop), ")")
-  }
-
-  labels
-}
-
-
-ggplot(results_long, aes(
-  x = b_true,
-  y = pmax(pmin(error, 0.4), -0.4),
-  color = method,
-  group = method,
-  shape = factor(ifelse(error > 0.4, 2, ifelse(error < -0.4, 6, 16)))
-)) +
-  geom_line(linewidth = 0.5, alpha = 0.6) +
-  geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
-  geom_point(size = 2, alpha = 0.6) +
-  scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
-  scale_color_discrete(
-    labels = c(
-      b_obs_mean = "Observed",
-      b_blomq_mean = "Blomqvist",
-      b_kp_mean = "Kelly-Price"
-    )
-  ) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  facet_grid(v_ind ~ k, labeller = facet_labeller) +
-  coord_cartesian(ylim = c(-0.4, 0.4)) +
-  labs(
-    x = "True slope",
-    y = "Slope error (estimate - true)",
-    color = "Method"
-  ) +
-  theme_minimal(base_size = 12) +
-  scale_x_continuous(
-    sec.axis = sec_axis(~ .,
-                        name = expression(Initial~measurement~error~~(sigma[e]^2/sigma[X]^2)),
-                        breaks = NULL, labels = NULL
-    )
-  ) +
-  scale_y_continuous(
-    sec.axis = sec_axis(~ .,
-                        name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
-                        breaks = NULL, labels = NULL)
-  )
-
-
-
-ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape = method)) +
-  #geom_point() +
-  geom_ribbon(aes(ymin = b_true + error - sd, ymax = b_true + error + sd, fill = method), alpha = 0.5, color = NA) +
-  #geom_line(aes(group = method)) +
-  geom_abline(slope = 1, intercept = 0, lty = 2) +
-  facet_grid(v_ind ~ v_err, labeller = label_both)
-```
-
-* Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
-* Kelly-Price adjustments are highly susceptible to spurious positive overestimation, especially when the true relationship is negative, and as v_ind increases. 
-* Blomqvist adjustments **consistently recover the accurate true relationship across all datasets.**
 
 
 ```{r, include = F, eval = F}
