@@ -92,7 +92,7 @@ blomqvist_pseudo_exact <- function(x, y, b_blom) {
 
 
 
-## GGplot var.test
+## GGplot var.test to use in chiolero plot
 stat_var_test <- function(mapping = NULL, data = NULL,
                           method = var.test,
                           xvar = NULL, yvar = NULL,
@@ -129,8 +129,8 @@ StatVarTest <- ggproto("StatVarTest", Stat,
     vtest <- method(data$x, data$y)
 
     # Create label
-    label <- paste0("v_i:v_f = ", signif(vtest$estimate, 3),
-                    ",\np = ", signif(vtest$p.value, 3))
+    label <- paste0(#"v_i:v_f = ", signif(vtest$estimate, 3),
+                    "p = ", signif(vtest$p.value, 3))
 
     # Determine label position
     data.frame(
@@ -143,31 +143,121 @@ StatVarTest <- ggproto("StatVarTest", Stat,
 
 
 
-# Chiolero plot function
-chiolero_plot <- function(df, init_var, final_var, label = NULL) {
-  init_sym <- ensym(init_var)
-  final_sym <- ensym(final_var)
-  init_name <- as_label(init_sym)
-  final_name <- as_label(final_sym)
+# # Chiolero plot function
+# chiolero_plot <- function(df, init_var, final_var, label = NULL) {
+#   init_sym <- ensym(init_var)
+#   final_sym <- ensym(final_var)
+#   init_name <- as_label(init_sym)
+#   final_name <- as_label(final_sym)
+# 
+#   # Get min and max across both variables
+#   y_range <- range(c(pull(df, !!init_sym), pull(df, !!final_sym)), na.rm = TRUE)
+# 
+#   ggplot(df, aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
+#     geom_segment(alpha = 0.1) +
+#     geom_point(aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2) +
+#     geom_point(aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2) +
+#     scale_y_continuous(limits = y_range) +
+#     scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
+#                        expand = c(0.15, 0.15)) +
+#     labs(x = "timepoint", y = "value") +
+#     stat_var_test(
+#       mapping = aes(x = !!init_sym, y = !!final_sym, group = 1),
+#       label.x = 1.5,
+#       label.y = Inf,
+#       hjust = 0.5, vjust = 1, size = 2
+#     ) +
+#     theme(axis.title.y = element_text(margin = margin(r = -2)))
+# }
 
-  # Get min and max across both variables
-  y_range <- range(c(pull(df, !!init_sym), pull(df, !!final_sym)), na.rm = TRUE)
+# chiolero_plot <- function(df, init_var, final_var, label = NULL, snap_to_even = TRUE) {
+#   init_sym  <- rlang::ensym(init_var)
+#   final_sym <- rlang::ensym(final_var)
+#   init_name <- rlang::as_label(init_sym)
+#   final_name <- rlang::as_label(final_sym)
+# 
+#   # data-driven range
+#   rng <- range(c(dplyr::pull(df, !!init_sym), dplyr::pull(df, !!final_sym)), na.rm = TRUE)
+# 
+#   if (snap_to_even) {
+#     m <- max(abs(rng))
+#     y_min <- -ceiling(m / 2) * 2
+#     y_max <-  ceiling(m / 2) * 2
+#   } else {
+#     y_min <- rng[1]; y_max <- rng[2]
+#   }
+#   if (y_min == y_max) { y_min <- y_min - 2; y_max <- y_max + 2 }
+# 
+#   major <- seq(y_min, y_max, by = 2)
+#   minor <- seq(y_min, y_max, by = 1)
+# 
+#   ggplot2::ggplot(df, ggplot2::aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
+#     ggplot2::geom_segment(alpha = 0.1, position = position_jitter(width = 0.1)) +
+#     ggplot2::geom_point(ggplot2::aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2,
+#                         position = position_jitter(width = 0.1)) +
+#     ggplot2::geom_point(ggplot2::aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2,
+#                         position = position_jitter(width = 0.1)) +
+#     ggplot2::scale_y_continuous(limits = c(y_min, y_max),
+#                                 breaks = major, minor_breaks = minor) +
+#     ggplot2::scale_x_continuous(breaks = c(1, 2),
+#                                 labels = c(init_name, final_name),
+#                                 expand = c(0.15, 0.15)) +
+#     ggplot2::labs(x = "timepoint", y = "value") +
+#     stat_var_test(mapping = ggplot2::aes(x = !!init_sym, y = !!final_sym, group = 1),
+#                   label.x = 1.5, label.y = Inf, hjust = 0.5, vjust = 1, size = 2) +
+#     ggplot2::theme(axis.title.y = ggplot2::element_text(margin = ggplot2::margin(r = -2)))
+# }
 
-  ggplot(df, aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
-    geom_segment(alpha = 0.1) +
-    geom_point(aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2) +
-    geom_point(aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2) +
-    scale_y_continuous(limits = y_range) +
+# Jittered Chiolero plot: segments line up with jittered points
+chiolero_plot <- function(df, init_var, final_var,
+                          jitter_width = 0.08,
+                          same_shift = TRUE,   # TRUE => same x shift at both timepoints
+                          seed = 123) {
+  init_sym  <- rlang::ensym(init_var)
+  final_sym <- rlang::ensym(final_var)
+  init_name <- rlang::as_label(init_sym)
+  final_name <- rlang::as_label(final_sym)
+
+  d <- dplyr::mutate(df, .row = dplyr::row_number())
+
+  if (!is.null(seed)) set.seed(seed)
+  j1 <- runif(nrow(d), -jitter_width, jitter_width)
+  j2 <- if (same_shift) j1 else runif(nrow(d), -jitter_width, jitter_width)
+
+  d_plot <- d %>%
+    dplyr::mutate(
+      x1 = 1 + j1,
+      y1 = !!init_sym,
+      x2 = 2 + j2,
+      y2 = !!final_sym
+    )
+
+  # Symmetric y-limits around 0 (optional; comment these 4 lines if you prefer data-driven)
+  rng <- range(c(d_plot$y1, d_plot$y2), na.rm = TRUE)
+  m   <- max(abs(rng)); if (!is.finite(m) || m == 0) m <- 1
+  major_y <- seq(-2 * ceiling(m/2), 2 * ceiling(m/2), by = 2)
+  minor_y <- seq(-2 * ceiling(m/2), 2 * ceiling(m/2), by = 1)
+
+  ggplot(d_plot, aes(x = x1, y = y1)) +
+    geom_segment(aes(x = x1, xend = x2, y = y1, yend = y2), alpha = 0.12) +
+    geom_point(size = 1.4, alpha = 0.25) +
+    geom_point(aes(x = x2, y = y2), size = 1.4, alpha = 0.25) +
+    stat_var_test(mapping = ggplot2::aes(x = !!init_sym, y = !!final_sym, group = 1),
+                   label.x = 1.5, label.y = Inf, hjust = 0.5, vjust = 1, size = 2) +
     scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
                        expand = c(0.15, 0.15)) +
+    scale_y_continuous(limits = c(-m, m),
+                       breaks = major_y, minor_breaks = minor_y) +
     labs(x = "timepoint", y = "value") +
-    stat_var_test(
-      mapping = aes(x = !!init_sym, y = !!final_sym, group = 1),
-      label.x = -Inf,
-      label.y = Inf,
-      hjust = -0.1, vjust = 1
+    theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor.y = element_line(),             # show minor gridlines (1-unit)
+      axis.title.y = element_text(margin = margin(r = -2)),
+      plot.margin = margin(4, 4, 4, 4)
     )
 }
+
+
 
 
 # Run simulation scenario function
@@ -257,31 +347,246 @@ annotated_panel_plot <- function(plots) {
   # grid.text("Observed values", x = 0.01, y = 0.25, rot = 90,
   #           gp = gpar(fontsize = 13, fontface = "bold"))
 }
+
+
+annotated_panel_plot2 <- function(plots) {
+  if (length(plots) != 9) {
+    stop("You must supply a list of exactly 9 plots.")
+  }
+
+  # Pull parameter values from global environment
+  v_pop <- get("v_pop", envir = .GlobalEnv)
+  v_ind <- get("v_ind", envir = .GlobalEnv)
+  v_err <- get("v_err", envir = .GlobalEnv)
+  b     <- get("b", envir = .GlobalEnv)
+
+  # Build dynamic title text
+  title_text <- paste0("b = ", signif(b, 3),
+                       "; v_ind = ", signif(v_ind, 3), 
+                       "; v_err = ", signif(v_err, 3))
+
+  # Arrange plots in 2×4 grid
+  plot_grid <- cowplot::plot_grid(
+    plots[[1]], plots[[2]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
+    ncol = 6,
+    align = "hv"
+  )
+
+  # Add spacer row for annotations
+  # plot_with_spacer <- plot_spacer() / plot_grid +
+  #   plot_layout(heights = c(0.05, 1))
+
+  # Print the plot layout
+  # print(plot_grid)
+
+  # Top-left title
+  # grid.text(title_text, x = 0, y = 0.975, just = "left",
+  #           gp = gpar(fontsize = 13, fontface = "bold"))
+}
+
+
+
+
+panel_plot_row6 <- function(plots) {
+  
+  p1 <- plots[[1]] +
+    scale_x_continuous(breaks = c(1, 2), 
+                       labels = c("initial", "final"),
+                       expand = c(0.1, 0.1)) +
+    labs(title = NULL, x = "timepoint", y = "value") +
+    ggplot2::theme_minimal(base_size = 8) +
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2))) +
+    scale_y_continuous(limits =c(-4, 4), breaks = seq(-4, 4, 2), expand = c(0,0))
+  
+  p2 <- plots[[2]] +
+    scale_x_continuous(breaks = c(1, 2), 
+                       labels = c("initial", "final"),
+                       expand = c(0.1, 0.1)) +
+    labs(title = NULL, x = "timepoint", y = "value") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2))) +
+    scale_y_continuous(limits =c(-4, 4), breaks = seq(-4, 4, 2), expand = c(0,0))
+  
+  p3 <- plots[[6]] +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2)))
+  
+  p4 <- plots[[7]] +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2)))
+  
+  p5 <- plots[[8]] +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2)))
+  
+  p6 <- plots[[9]] +
+    labs(title = NULL, x = "method", y = "slope") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2)))
+  
+  # A text-only panel to slot into a row of plots
+  text_panel <- function(b, v_ind, v_err, base_size = 8) {
+    labs_df <- data.frame(
+      x = 0.5,
+      y = c(0.75, 0.5, 0.25),
+      lab = c(
+        sprintf("b[true]==%.3g", b),
+        sprintf("sigma[Delta[ind]]^2==%.3g", v_ind),
+        sprintf("sigma[err]^2==%.3g", v_err)
+      )
+    )
+    
+    ggplot() +
+      geom_text(
+        data = labs_df,
+        aes(x = x, y = y, label = lab),
+        parse = TRUE,            # <-- key: parse plotmath
+        hjust = 0.5, vjust = 0.5,
+        lineheight = 1.05, fontface = "bold",
+        size = base_size * 0.35
+      ) +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+      theme_void(base_size = base_size) +
+      theme(plot.margin = margin(3, 3, 3, 3))
+  }
+  
+  myPlots <- cowplot::plot_grid(text_panel(b, v_ind, v_err, base_size = 8),
+                                p1, p2, p3, p4, p5, p6, ncol = 7, align = "h",
+                                rel_widths = c(0.7, 1, 1, 1, 1, 1, 1))
+  return(myPlots)
+}
+
+
+
+
+# text_panel2 <- function(label, base_size = 8) {
+#    ggplot() +
+#       geom_text(
+#         data = NULL,
+#         aes(x = 0.5, y = 0.5, label = label),
+#         hjust = 0.5, vjust = 0.5, 
+#         parse = TRUE,
+#         lineheight = 1.05, fontface = "bold",
+#         size = base_size * 0.35
+#       ) +
+#       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+#       theme_void(base_size = base_size) +
+#       theme(plot.margin = margin(3, 3, 3, 3))
+# }
+
+# install.packages("ggtext")
+library(ggtext)
+
+# text_panel_html <- function(label, base_size = 8) {
+#   ggplot() +
+#     geom_richtext(
+#       aes(0.5, 0.5,
+#           label = label),
+#       hjust = 0.5, vjust = 0.5, size = base_size * 0.35,
+#       fill = NA, label.color = NA
+#     ) +
+#     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+#     theme_void(base_size = base_size) +
+#     theme(plot.margin = margin(3, 3, 3, 3))
+# }
+
+text_panel_html <- function(line1,
+                            line2 = NULL,
+                            line3 = NULL,
+                            line4 = NULL,
+                            line5 = NULL,
+                            line6 = NULL,
+                            line7 = NULL,
+                            base_size = 8,
+                            hjust = 0.5,
+                            vjust = 0.5,
+                            lineheight = 1.1) {
+
+  # keep only non-empty lines and join with <br>
+  lines <- c(line1, line2, line3, line4, line5, line6, line7)
+  lines <- lines[!vapply(lines, function(x) is.null(x) || identical(x, ""), logical(1))]
+  label <- paste(lines, collapse = "<br>")
+
+  ggplot() +
+    ggtext::geom_richtext(
+      aes(0.5, 0.5, label = label),
+      hjust = hjust, vjust = vjust,
+      lineheight = lineheight,
+      size = base_size * 0.35,
+      fill = NA, label.color = NA
+    ) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+    theme_void(base_size = base_size) +
+    theme(plot.margin = margin(3, 3, 3, 3))
+}
+
+
+# A plotmath text panel: up to 5 lines, uniform size
+text_panel_math <- function(line1,
+                            line2 = NULL,
+                            line3 = NULL,
+                            line4 = NULL,
+                            line5 = NULL,
+                            line6 = NULL,
+                            line7 = NULL,
+                            base_size = 8,
+                            hjust = 0.5,
+                            line_y_top = 0.95,
+                            line_y_bot = 0) {
+
+  lines <- c(line1, line2, line3, line4, line5, line6, line7)
+  lines <- lines[!vapply(lines, function(z) is.null(z) || identical(z, ""), logical(1))]
+  n <- length(lines)
+  ys <- if (n == 1) 0.5 else seq(line_y_top, line_y_bot, length.out = n)
+
+  df <- data.frame(x = 0.5, y = ys, lab = lines, stringsAsFactors = FALSE)
+
+  ggplot() +
+    geom_text(
+      data = df,
+      aes(x, y, label = lab),
+      parse = TRUE,
+      hjust = hjust, vjust = 0.5,
+      size = base_size * 0.35,
+      lineheight = 2
+    ) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
+    theme_void(base_size = base_size) +
+    theme(plot.margin = margin(3, 3, 3, 3))
+}
 ```
 
 
 
 
-# Scenario 1: No relationship between change and initial
+# Case scenarios
 
-## 1.1: Measurement error dominates variance in change
-
+## A: no true relationship, no individual variation in change, but there is measurement error
 ```{r s1.1, fig.width = 10, fig.height = 5.5}
 # Set number of individuals for simulations
-n <- 1000
+n <- 200
 
 # Set variances
 v_pop <- 1         # true variance in initial trait values
 
-# Total change variance is 1 (= v_ind + 2 * v_err); error contributes 99% of total
-v_ind <- 0.01
-v_err <- 0.495    # 0.99/2
+# Total change variance is 1 (= v_ind + 2 * v_err); error contributes 100% of total
+v_ind <- 0
+v_err <- 0.5    # 1/2
 
 # No true relationship to initial value
 b <- 0
 
 run_simulation_scenario <- function(
-  n, b, v_ind, v_err, v_pop = 1, seed = 1
+  n, b, v_ind, v_err, v_pop = 1, seed = 4
 ) {
   set.seed(seed)
 
@@ -301,6 +606,15 @@ run_simulation_scenario <- function(
   fit_obs <- lm(log_change_obs ~ log_init_obs, data = df1)
   b_obs   <- coef(fit_obs)[2]
   b_obs_confint <- confint(fit_obs)[2, ]
+  obs_boot <- boot::boot(
+    data = df1,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
+    },
+    R = 2000
+  )
+  b_obs_confint_boot <- stats::quantile(obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
   # --- 3) Kelly–Price (point + bootstrap CI) ---
   kp_full <- rttm.adj(df1$log_init_obs, df1$log_final_obs)
@@ -345,8 +659,8 @@ run_simulation_scenario <- function(
   slopes_tbl <- tibble::tibble(
     method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
     estimate = c(b_obs, b_kp_adj, b_blomq_adj),
-    ci_lower = c(b_obs_confint[1], b_kp_adj_confint_boot[1], b_blomq_adj_confint_boot[1]),
-    ci_upper = c(b_obs_confint[2], b_kp_adj_confint_boot[2], b_blomq_adj_confint_boot[2])
+    ci_lower = c(b_obs_confint_boot[1], b_kp_adj_confint_boot[1], b_blomq_adj_confint_boot[1]),
+    ci_upper = c(b_obs_confint_boot[2], b_kp_adj_confint_boot[2], b_blomq_adj_confint_boot[2])
   )
 
   # --- 6) Axis ranges for plots ---
@@ -361,16 +675,17 @@ run_simulation_scenario <- function(
     dplyr::pull(max_abs)
 
   # --- 7) Plots (uses your existing helpers: chiolero_plot, annotated_panel_plot) ---
-  p1 <- chiolero_plot(df1, log_init_true,  log_final_true)  + ggtitle("True")
-  p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)   + ggtitle("Observed")
+  p1 <- chiolero_plot(df1, log_init_true,  log_final_true) + ggtitle("True")
+  p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)  + ggtitle("Observed")
 
   p3 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_final_true)) +
     ggplot2::geom_point(alpha = 0.2) +
     ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    ggpubr::stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 1) +
     ggplot2::geom_smooth(method = "lm", se = FALSE) +
-    ggplot2::coord_fixed(xlim = c(-max_abs_initfinal, max_abs_initfinal),
-                         ylim = c(-max_abs_initfinal, max_abs_initfinal)) +
+    ggplot2::coord_cartesian(xlim = c(-max_abs_initfinal, max_abs_initfinal),
+                             ylim = c(-max_abs_initfinal, max_abs_initfinal)) +
     ggtitle("True")
 
   p4 <- p3 + ggplot2::aes(x = log_init_obs, y = log_final_obs) + ggtitle("Observed")
@@ -378,9 +693,10 @@ run_simulation_scenario <- function(
   p5 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_change_true)) +
     ggplot2::geom_point(alpha = 0.2) +
     ggplot2::geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    ggpubr::stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 1) +
     ggplot2::geom_smooth(method = "lm", se = FALSE) +
-    ggplot2::coord_fixed(xlim = c(-max_abs_initchange, max_abs_initchange),
+    ggplot2::coord_cartesian(xlim = c(-max_abs_initchange, max_abs_initchange),
                          ylim = c(-max_abs_initchange, max_abs_initchange)) +
     ggtitle("True")
 
@@ -391,8 +707,10 @@ run_simulation_scenario <- function(
   p9 <- ggplot2::ggplot(slopes_tbl, ggplot2::aes(x = method, y = estimate)) +
     ggplot2::geom_point() +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
-    ggplot2::geom_hline(yintercept = b, linetype = 2) +
-    ggplot2::labs(x = NULL, y = "Slope")
+    ggplot2::geom_hline(yintercept = b, linetype = 1, color = "red") +
+    ggplot2::geom_hline(yintercept = 0, linetype = 2) +
+    ggplot2::labs(x = NULL, y = "Slope") +
+    ylim(-0.61, 0.61)
 
   plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9)
 
@@ -401,27 +719,30 @@ run_simulation_scenario <- function(
     data = df1,
     slopes = slopes_tbl,
     plots = plots1,
-    boot = list(kelly_price = kp_boot, blomqvist = blomqvist_boot)
+    boot = list(obs = obs_boot, kelly_price = kp_boot, blomqvist = blomqvist_boot)
   )
 }
 
 s1.1_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
-annotated_panel_plot(s1.1_results$plots)
+#annotated_panel_plot(s1.1_results$plots)
+#p1 <- annotated_panel_plot2(s1.1_results$plots)
+p1 <- panel_plot_row6(s1.1_results$plots)
+p1
 ```
 
 * Confirms spurious negative relationship between observed change and initial is due to measurement error 
 * Confirms that both Kelly-Price and Blomqvist corrections yield the true zero relationship when the change variance is dominated by measurement error
 
 
-## 1.2: Individual variance dominates
+## B: no true relationship, no measurement error, but there is individual variation in change
 ```{r s1.2_new, fig.width = 10, fig.height = 5.5}
 # Set variances
 v_pop <- 1
-# Total change variance is 1 (= v_ind + 2 * v_err); v_ind contributes 99% of total
-v_ind <- 0.99
-v_err <- 0.005    # 0.01/2
+# Total change variance is 1 (= v_ind + 2 * v_err); v_ind contributes 100% of total
+v_ind <- 1
+v_err <- 0    # 
 # No true relationship to initial value
 b <- 0
 
@@ -430,21 +751,23 @@ s1.2_results <- run_simulation_scenario(
 
 # Plot it
 annotated_panel_plot(s1.2_results$plots)
+p2 <- annotated_panel_plot2(s1.2_results$plots)
+p2 <- panel_plot_row6(s1.2_results$plots)
 ```
 
 * Confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean when measurement error is minimal).
 * Confirms that Kelly-Price adjustment interprets the individual variance as measurement error and attempts to correct for regression to the mean, yielding a spurious positive relationship between change and initial values.
 * Blomqvist correction yields the true zero relationship.
 
-## 1.3: Equal individual variance and measurement error
+## C: no true relationship, both individual variation in change and measurement error
 
 ```{r s1.3, fig.width = 10, fig.height = 5.5}
 # Set variances
 v_pop <- 1
 
 # Total change variance is 1 (= v_ind + 2 * v_err); v_ind and 2 * v_err each contribute 50%
-v_ind <- 0.5
-v_err <- 0.25    # 0.5/2
+v_ind <- 1#0.5
+v_err <- 0.5#0.25    # 0.5/2
 # No true relationship to initial value
 b <- 0
 
@@ -453,6 +776,10 @@ s1.3_results <- run_simulation_scenario(
 
 # Plot it
 annotated_panel_plot(s1.3_results$plots)
+p3 <- annotated_panel_plot2(s1.3_results$plots)
+p3 <- panel_plot_row6(s1.3_results$plots)
+
+#cowplot::plot_grid(p1, p2, p3, nrow = 3)
 ```
 
 * Confirms again that regression to the mean due to measurement error produces spurious negative relationship between observed change and initial values.
@@ -472,32 +799,14 @@ annotated_panel_plot(s1.3_results$plots)
 
 # Scenario 2: True negative relationship between change and initial 
 
-## 2.1: A true effect of initial value dominates variance in change
+## D: a true relationship, no individual variation in change, but there is measurement error
 
-```{r s2.1_new, fig.width = 10, fig.height = 5.5}
-# Scenario D: Mostly deterministic, with minimal v_ind and v_err (b² = 0.98)
-# Total variance = b² + v_ind + 2*v_err = 0.98 + 0.01 + 0.01 = 1.00
-v_ind <- 0.01
-v_err <- 0.005
-b     <- -sqrt(0.98)
-
-# Run the simulation with the base plot templates (your plots1 list)
-s2.1_results <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
-
-# Plot it
-annotated_panel_plot(s2.1_results$plots)
-```
-
-* A true relationship with minimal individual variance or measurement error is reflected accurately in the observed relationship. However, Kelly-Price still interprets the variance in change as being due to measurement error, and attempts to correct for regression to the mean, yielding a much weaker relationship (almost zero!). Blomqvist gets it right.  
-
-## 2.3: True relationship with measurement error dominating
 ```{r s2.3, fig.width = 10, fig.height = 5.5}
-# Weaker true relationship with measurement error, minimal individual variance
-# Total variance = b² + v_ind + 2*v_err = 0.025 + 0.01 + 0.965 = 1.00
-b     <- -sqrt(0.025)
-v_ind <- 0.01
-v_err <- (1 - 0.025 - v_ind) / 2  # = 0.4825
+# Weaker true relationship with measurement error, no individual variance
+# Total change variance = b² + v_ind + 2*v_err = 0.025 + 0 + 0.975 = 1.00
+b     <- -0.3
+v_ind <- 0
+v_err <- 0.5#(1 - b^2 - v_ind) / 2  # = 0.46875
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.2_results <- run_simulation_scenario(
@@ -505,17 +814,20 @@ s2.2_results <- run_simulation_scenario(
 
 # Plot it
 annotated_panel_plot(s2.2_results$plots)
+p4 <- annotated_panel_plot2(s2.2_results$plots)
+p4 <- panel_plot_row6(s2.2_results$plots)
 ```
 
 * When measurement error dominates along with a true relationship, observed negative relationship is overestimated due to RTM, and K-P adjustment nearly masks true relationship (still there but very weak). Blomqvist gets it right.
 
-## 2.4: True relationship with individual variance dominating
+## E: a true relationship, no measurement error, but there is individual variation in change
 ```{r s2.4, fig.width = 10, fig.height = 5.5}
 # Weaker true relationship and individual variance, minimal measurement error
 # Total variance = b² + v_ind + 2*v_err = 0.025 + 0.965 + 0.01 = 1.00
-b     <- -sqrt(0.025)
-v_ind <- 0.965
-v_err <- (1 - 0.025 - v_ind) / 2  # = 0.005
+b     <- -0.3
+v_err <- 0
+v_ind <- 1#1 - b^2 - 2 * v_err
+#v_err <- (1 - b^2 - v_ind) / 2  # = 0
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.3_results <- run_simulation_scenario(
@@ -523,17 +835,19 @@ s2.3_results <- run_simulation_scenario(
 
 # Plot it
 annotated_panel_plot(s2.3_results$plots)
+p5 <- annotated_panel_plot2(s2.3_results$plots)
+p5 <- panel_plot_row6(s2.3_results$plots)
 ```
 
 * When individual variance dominates along with a true relationship and measurement error is minimal, the observed relationship is accurate, but K-P produces spurious positive relationship. Blomqvist gets it right.
 
-## 2.5: True relationship with equal individual variance and meaurement error
+## F: True relationship with both individual variance and meaurement error
 ```{r s2.5, fig.width = 10, fig.height = 5.5}
 # Mixed — moderate contributions from all sources
-# Total variance = b² + v_ind + 2*v_err = 0.025 + 0.4875 + 0.4875 = 1.00
-b     <- -sqrt(0.025)
-v_ind <- 0.4875
-v_err <- (1 - 0.025 - v_ind) / 2  # = 0.24375
+# Total variance = b² + v_ind + 2*v_err = 0.025 + 0.475 + 0.475 = 1.00
+b     <- -0.3
+v_ind <- 1#(1 - b^2) / 2
+v_err <- 0.5#(1 - b^2 - v_ind) / 2  # = 0.24375
 
 # Run the simulation with the base plot templates (your plots1 list)
 s2.4_results <- run_simulation_scenario(
@@ -541,6 +855,51 @@ s2.4_results <- run_simulation_scenario(
 
 # Plot it
 annotated_panel_plot(s2.4_results$plots)
+p6 <- annotated_panel_plot2(s2.4_results$plots)
+p6 <- panel_plot_row6(s2.4_results$plots)
+```
+
+
+```{r fig1}
+# Combine four scenarios into Figure 1
+
+# Make a column-label header row (7 labels by default)
+make_column_header <- function(
+  labels = paste("Col", 1:7),
+  rel_widths = rep(1, length(labels)),
+  base_size = 10,
+  face = "bold"
+) {
+  heads <- lapply(labels, function(lab) {
+    cowplot::ggdraw() +
+      cowplot::draw_label(
+        lab, x = 0.6, y = 0.5,
+        hjust = 0.5, vjust = 0.5,
+        fontface = face, size = base_size
+      )
+  })
+  cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
+}
+
+# EXAMPLE: combine header + your 4 rows
+# (Set rel_widths to match how you built each row of 7 panels)
+header <- make_column_header(
+  labels = c("1. Parameters", "2. True\nvalues", "3. Observed\nvalues", 
+             "4. Observed", "5. Kelly-Price", "6. Blomqvist", "7. Slope\ncomparison"),
+  rel_widths = c(0.7, rep(1, 6)),      # <- use the SAME rel_widths you used for each row
+  base_size = 10
+)
+
+fig1 <- cowplot::plot_grid(
+  header,
+  p1, p2, p4, p5,              # your four 7-panel rows
+  labels = c("", "A", "B", "C", "D"),
+  ncol = 1,
+  rel_heights = c(0.25, 1, 1, 1, 1)  # give the header some breathing room
+)
+fig1
+
+ggsave(filename = "fig1.png", width = 200, height = 140, units = "mm", bg = "white")
 ```
 
 * When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). Blomqvist gets it right.
@@ -619,8 +978,8 @@ evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind,
 param_grid <- expand.grid(
   v_pop = 1,                                        # always standardize to v_pop = 1
   k = c(0.01, 1/6, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
-  v_ind_rel = c(2, 0.5, 0.01),                      # range of true v_ind in synthetic datasets
-  b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),   # range of true slopes in synthetic datasets
+  v_ind_rel = c(10, 1, 0.01),                      # range of true v_ind in synthetic datasets
+  b_true = seq(-1, 1, 0.25),   # range of true slopes in synthetic datasets
   reps = 1000,                                       # n replicate synthetic datasets for each parameter set
   n = 200                    # size of each synthetic dataset (should represent a 'typical' scientific study)
 ) 
@@ -661,7 +1020,7 @@ results_long <- results_grid %>%
     ),
     error = estimate - b_true
   ) %>%
-  mutate(v_ind = factor(v_ind, levels = c(2, 0.5, 0.01)))
+  mutate(v_ind = factor(v_ind, levels = c(10, 1, 0.01)))
 
 # Facet labeller 
 facet_labeller <- function(labels) {
@@ -679,25 +1038,26 @@ facet_labeller <- function(labels) {
   if ("v_ind" %in% names(labels)) {
     v <- to_num(labels$v_ind)
     v_cat <- ifelse(v <= 0.05, "Very low",
-             ifelse(v <= 0.50, "Moderate",
-             ifelse(v <= 2.00, "High", "Extreme")))
+             ifelse(v <= 1, "Moderate",
+             ifelse(v <= 10, "High", "Extreme")))
     labels$v_ind <- paste0(v_cat, " (", fmt(v / v_pop), ")")
   }
 
   labels
 }
 
+lab_sig1 <- function(x) formatC(signif(x, 1), digits = 1, format = "fg")
 
 ggplot(results_long, aes(
   x = b_true,
-  y = pmax(pmin(error, 0.4), -0.4),
+  y = pmax(pmin(error, 0.6), -0.6),
   color = method,
   group = method,
-  shape = factor(ifelse(error > 0.4, 2, ifelse(error < -0.4, 6, 16)))
+  shape = factor(ifelse(error > 0.6, 2, ifelse(error < -0.6, 6, 16)))
 )) +
   geom_line(linewidth = 0.5, alpha = 0.6) +
   geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
-  geom_point(size = 2, alpha = 0.6) +
+  geom_point(size = 1.5, alpha = 0.6) +
   scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
   scale_color_discrete(
     labels = c(
@@ -708,24 +1068,27 @@ ggplot(results_long, aes(
   ) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   facet_grid(v_ind ~ k, labeller = facet_labeller) +
-  coord_cartesian(ylim = c(-0.4, 0.4)) +
+  coord_cartesian(ylim = c(-0.6, 0.6)) +
   labs(
-    x = "True slope",
+    x = "True slope of change vs. initial",
     y = "Slope error (estimate - true)",
     color = "Method"
   ) +
   theme_minimal(base_size = 12) +
   scale_x_continuous(
+    labels = lab_sig1, expand = c(0.015, 0.015),
     sec.axis = sec_axis(~ .,
-                        name = expression(Initial~measurement~error~~(sigma[e]^2/sigma[X]^2)),
+                        name = expression(Measurement~error~~(sigma[error]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL
     )
   ) +
   scale_y_continuous(
     sec.axis = sec_axis(~ .,
                         name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
-                        breaks = NULL, labels = NULL)
+                        breaks = NULL, labels = NULL,)
   )
+
+ggsave(filename = "fig2.png", width = 160, height = 120, units = "mm", bg = "white")
 
 
 
@@ -797,6 +1160,9 @@ pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
 # Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
 pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
+
+# Variance in pdam true initial trait values (subtract measurement error variance)
+pdam_v_pop <- pdam_var_x_abs - pdam_v_err_abs
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
@@ -805,6 +1171,16 @@ pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
 pdam_fit_obs <- lm(log_change_obs ~ log_init_obs, data = pdam)
 pdam_b_obs   <- coef(pdam_fit_obs)[2]
 pdam_b_obs_confint <- confint(pdam_fit_obs)[2, ]
+pdam_b_obs_boot <- boot::boot(
+  data = pdam,
+  statistic = function(d, i) {
+    di <- d[i, , drop = FALSE]
+    coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
+  },
+  R = 2000
+)
+pdam_b_obs_confint_boot <- stats::quantile(pdam_b_obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
 
 # --- 3) Kelly–Price (point + bootstrap CI) ---
 pdam_kp_full <- rttm.adj(pdam$log_init_obs, pdam$log_final_obs)
@@ -825,6 +1201,8 @@ pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), n
 # --- 4) Blomqvist (point + bootstrap CI) ---
 pdam_k <- pdam_v_err_abs / pdam_var_x_abs
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
+# Calculate variance in pdam individual change (use blomqvist-adjusted slope)
+pdam_v_ind <- var(pdam$log_change_obs) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
 
 # pseudo-exact y’ (used only for plotting panel, not for CI)
 pdam <- pdam %>%
@@ -849,8 +1227,8 @@ pdam_b_blomq_adj_confint_boot <- stats::quantile(pdam_blomqvist_boot$t, c(0.025,
 pdam_slopes_tbl <- tibble::tibble(
   method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
   estimate = c(pdam_b_obs, pdam_b_kp_adj, pdam_b_blomq_adj),
-  ci_lower = c(pdam_b_obs_confint[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj_confint_boot[1]),
-  ci_upper = c(pdam_b_obs_confint[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj_confint_boot[2])
+  ci_lower = c(pdam_b_obs_confint_boot[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj_confint_boot[1]),
+  ci_upper = c(pdam_b_obs_confint_boot[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj_confint_boot[2])
 )
 
 # --- 6) Axis ranges for plots ---
@@ -858,45 +1236,88 @@ pdam_slopes_tbl <- tibble::tibble(
 pdam_trait <- range(c(pdam$log_init_obs, pdam$log_final_obs), na.rm = TRUE)
 pdam_change <- range(pdam$log_change_obs, na.rm = TRUE)
 
-pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) + ggtitle("Observed")
+pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) + 
+  scale_y_continuous(limits = c(-4.1, -0.9)) +
+  scale_x_continuous(breaks = c(1, 2), 
+                       labels = c("initial", "final"),
+                       expand = expansion(mult = c(0.15, 0.2))) +
+    labs(title = NULL, x = "timepoint", y = "log S/H") +
+    ggplot2::theme_minimal(base_size = 8) +
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 1)))
 pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_trait[1], pdam_trait[2])) +
+    coord_cartesian(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_trait[1], pdam_trait[2])) +
     ggtitle("Observed")
 pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_change[1], pdam_change[2])) +
-    ggtitle("Observed")
+    coord_cartesian(xlim = c(-3.2, -1.0), 
+                    ylim = c(pdam_change[1], pdam_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 pdam_kp_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_kp_adj)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_change[1], pdam_change[2])) +
-    ggtitle("Kelly-Price")
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_change[1], pdam_change[2])) +
-    ggtitle("Blomqvist")
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
-  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper))
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
+    labs(title = NULL, x = "method", y = "slope") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 
-cowplot::plot_grid(pdam_chiolero_plot, pdam_initfinal_plot, NULL, NULL, pdam_initchange_plot, 
-                   pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, nrow = 2, align = "hv")
+
+
+
+
+
+#cowplot::plot_grid(pdam_chiolero_plot, pdam_initfinal_plot, NULL, NULL, pdam_initchange_plot, 
+ #                  pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, nrow = 2, align = "hv")
+
+pdam_plots <- cowplot::plot_grid(
+  text_panel_math(
+    line1 = "bold('Bleaching in')",
+    line2 = "bolditalic(P*'.'~damicornis)",
+    line3 = " ",
+    line4 = sprintf("n==bold(%s)", formatC(nrow(pdam), format = "fg")),
+    line5 = sprintf("sigma[X]^2==bold(%s)", formatC(pdam_var_x_abs - pdam_v_err_abs, format = "fg", digits = 3)),
+    line6 = sprintf("sigma[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
+    line7 = sprintf("sigma[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
+  ),
+  pdam_chiolero_plot, pdam_initchange_plot,
+  pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, 
+  nrow = 1, align = "h")
+
+
+
 ```
-
-
-
 
 # Dataset 2: *A. cervicornis* growth
 
@@ -910,15 +1331,32 @@ mill <- read_csv("subMil1.csv")       # Generated in Carly's script
 # Tidy and filter data
 mill <- mill %>%
   filter(size > 0) %>%  # there are four rows where size = 0, filter out because will generate Inf
-  filter(InitialSize > 1) %>%    # filter out very small frags (noisy) (30 observations with InitialSize < 1)
+  filter(InitialSize > 1) %>% # filter out very small frags (noisy) (30 observations with InitialSize < 1)
   mutate(log_init_obs = log(InitialSize),
          log_final_obs = log(size),
          log_change_obs = log_final_obs - log_init_obs)
+
+# Flag outliers
+# out_vals <- boxplot.stats(mill$log_change_obs, coef = 2)$out   # the outlier values
+# mill$flag  <- mill$log_change_obs %in% out_vals
+# ggplot(mill, aes(x = 1, y = log_change_obs, color = flag)) +
+#   geom_jitter()
+
+# Remove outliers
+# mill <- mill %>%
+#   filter(!flag)
+
+# Filter for only positive growth? (following Million et al. 2022)
+# mill <- mill %>%
+#   filter(log_change_obs > 0)
 
 # Variance in initial observed trait values
 mill_var_x_abs <- var(mill$log_init_obs, na.rm = TRUE)
 # Measurement error variance (from qPCR technical replicates; see mill_variance.R)
 mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "RegressionToMean_forGithub.R")
+
+# Variance in mill true initial trait values (subtract measurement error variance)
+mill_v_pop <- mill_var_x_abs - mill_v_err_abs
 ```
 
 ### Observed and adjusted relationships in *A. cervicornis* study
@@ -927,6 +1365,16 @@ mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "RegressionToMean
 mill_fit_obs <- lm(log_change_obs ~ log_init_obs, data = mill)
 mill_b_obs   <- coef(mill_fit_obs)[2]
 mill_b_obs_confint <- confint(mill_fit_obs)[2, ]
+mill_b_obs_boot <- boot::boot(
+  data = mill,
+  statistic = function(d, i) {
+    di <- d[i, , drop = FALSE]
+    coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
+  },
+  R = 2000
+)
+mill_b_obs_confint_boot <- stats::quantile(mill_b_obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
 
 # --- 3) Kelly–Price (point + bootstrap CI) ---
 mill_kp_full <- rttm.adj(mill$log_init_obs, mill$log_final_obs)
@@ -947,6 +1395,8 @@ mill_b_kp_adj_confint_boot <- stats::quantile(mill_kp_boot$t, c(0.025, 0.975), n
 # --- 4) Blomqvist (point + bootstrap CI) ---
 mill_k <- mill_v_err_abs / mill_var_x_abs
 mill_b_blomq_adj <- blomqvist_b(mill_b_obs, mill_k)
+# Calculate variance in pdam individual change (use blomqvist-adjusted slope)
+mill_v_ind <- var(mill$log_change_obs) - (2 * mill_v_err_abs) - (mill_b_blomq_adj^2 * mill_v_pop)
 
 # pseudo-exact y’ (used only for plotting panel, not for CI)
 mill <- mill %>%
@@ -971,8 +1421,8 @@ mill_b_blomq_adj_confint_boot <- stats::quantile(mill_blomqvist_boot$t, c(0.025,
 mill_slopes_tbl <- tibble::tibble(
   method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
   estimate = c(mill_b_obs, mill_b_kp_adj, mill_b_blomq_adj),
-  ci_lower = c(mill_b_obs_confint[1], mill_b_kp_adj_confint_boot[1], mill_b_blomq_adj_confint_boot[1]),
-  ci_upper = c(mill_b_obs_confint[2], mill_b_kp_adj_confint_boot[2], mill_b_blomq_adj_confint_boot[2])
+  ci_lower = c(mill_b_obs_confint_boot[1], mill_b_kp_adj_confint_boot[1], mill_b_blomq_adj_confint_boot[1]),
+  ci_upper = c(mill_b_obs_confint_boot[2], mill_b_kp_adj_confint_boot[2], mill_b_blomq_adj_confint_boot[2])
 )
 
 # --- 6) Axis ranges for plots ---
@@ -980,43 +1430,119 @@ mill_slopes_tbl <- tibble::tibble(
 mill_trait <- range(c(mill$log_init_obs, mill$log_final_obs), na.rm = TRUE)
 mill_change <- range(mill$log_change_obs, na.rm = TRUE)
 
-mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) + ggtitle("Observed")
+mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) + 
+  scale_y_continuous(limits = c(-0.5, 5.1)) +
+  scale_x_continuous(breaks = c(1, 2), 
+                       labels = c("initial", "final"),
+                       expand = c(0.1, 0.1)) +
+    labs(title = NULL, x = "timepoint", y = "log size") +
+    ggplot2::theme_minimal(base_size = 8) +
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 1)))
 mill_initfinal_plot <- ggplot(mill, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_trait[1], mill_trait[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_trait[1], mill_trait[2])) +
     ggtitle("Observed")
 mill_initchange_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_obs)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    ggtitle("Observed")
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 mill_kp_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_kp_adj)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    ggtitle("Kelly-Price")
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 mill_blomq_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(label.x = -Inf, label.y = Inf, hjust = -0.1, vjust = 1.5) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_fixed(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    ggtitle("Blomqvist")
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 mill_slopes_plot <- ggplot(mill_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
-  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper))
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
+    labs(title = NULL, x = "method", y = "slope") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
 
-cowplot::plot_grid(mill_chiolero_plot, mill_initfinal_plot, NULL, NULL, mill_initchange_plot, 
-                   mill_kp_plot, mill_blomq_plot, mill_slopes_plot, nrow = 2, align = "hv")
+#cowplot::plot_grid(mill_chiolero_plot, mill_initfinal_plot, NULL, NULL, mill_initchange_plot, 
+ #                  mill_kp_plot, mill_blomq_plot, mill_slopes_plot, nrow = 2, align = "hv")
+
+mill_plots <- cowplot::plot_grid(
+  text_panel_math(
+    line1 = "bold('Growth in')",
+    line2 = "bolditalic(A*'.'~cervicornis)",
+    line3 = " ",
+    line4 = sprintf("n==bold(%s)", formatC(nrow(mill), format = "fg")),
+    line5 = sprintf("sigma[X]^2==bold(%s)", formatC(mill_var_x_abs - mill_v_err_abs, format = "fg", digits = 3)),
+    line6 = sprintf("sigma[Delta[ind]]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
+    line7 = sprintf("sigma[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
+  ),
+  mill_chiolero_plot, mill_initchange_plot,
+  mill_kp_plot, mill_blomq_plot, mill_slopes_plot, 
+  nrow = 1, align = "h")
+
+
+
 ```
 
+```{r}
+# Make a column-label header row (7 labels by default)
+make_column_header <- function(
+  labels = paste("Col", 1:5),
+  rel_widths = rep(1, length(labels)),
+  base_size = 10,
+  face = "bold"
+) {
+  heads <- lapply(labels, function(lab) {
+    cowplot::ggdraw() +
+      cowplot::draw_label(
+        lab, x = 0.6, y = 0.5,
+        hjust = 0.5, vjust = 0.5,
+        fontface = face, size = base_size
+      )
+  })
+  cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
+}
+
+# EXAMPLE: combine header + your 4 rows
+# (Set rel_widths to match how you built each row of 7 panels)
+header <- make_column_header(
+  labels = c("1. Dataset       ", "2. Observed\nvalues", "3. Observed", "4. Kelly-Price", "5. Blomqvist", "6. Slope\ncomparison"),
+  rel_widths = rep(1, 6),      # <- use the SAME rel_widths you used for each row
+  base_size = 10
+)
+
+fig3 <- cowplot::plot_grid(
+  header, pdam_plots, mill_plots, align = "hv", 
+  ncol = 1, labels = c("", "A", "B"),
+  rel_heights = c(0.25, 1, 1)  # give the header some breathing room
+)
+fig3
+
+ggsave(filename = "fig3.png", width = 200, height = 80, units = "mm", bg = "white")
+```
 
 
 
@@ -1085,4 +1611,22 @@ cowplot::plot_grid(p_lm, p_orth, nrow = 1)
 ```
 
 
+```{r}
+# relationship between observed slope, blomqvist's k, and blomqvist's slope
+library(ggplot2)
 
+b_true <- seq(-1, 1, 0.01) # true slope of -1 means all final trait values are zero, cannot have a lower slope than this
+k_vals <- c(0, 0.1, 0.3, 0.5, 0.7)
+
+df <- expand.grid(b_true = b_true, k = k_vals)
+df$b_obs <- (1 - df$k) * df$b_true - df$k
+
+ggplot(df, aes(x = b_true, y = b_obs, color = factor(k))) +
+  geom_line(size = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = 3) +
+  labs(x = "True slope of change vs. initial", 
+       y = "Observed slope of change vs. initial", 
+       color = "k (fraction of observed\ntrait variance due to\nmeasurement error)") +
+  theme_bw()
+
+```
