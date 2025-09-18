@@ -619,6 +619,8 @@ run_simulation_scenario <- function(
   # --- 3) Kelly–Price (point + bootstrap CI) ---
   kp_full <- rttm.adj(df1$log_init_obs, df1$log_final_obs)
   b_kp_adj <- coef(lm(kp_full$adj.growth ~ df1$log_init_obs))[2]
+  # observed sd ratio
+  theta <- sd(df1$log_final_obs) / sd(df1$log_init_obs)
 
   set.seed(seed + 100)
   kp_boot <- boot::boot(
@@ -676,7 +678,11 @@ run_simulation_scenario <- function(
 
   # --- 7) Plots (uses your existing helpers: chiolero_plot, annotated_panel_plot) ---
   p1 <- chiolero_plot(df1, log_init_true,  log_final_true) + ggtitle("True")
-  p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)  + ggtitle("Observed")
+  p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)  + ggtitle("Observed") +
+    annotate("text", x = 1.5, y = Inf, 
+             label = paste0("s2/s1= ", round(theta, 3)), 
+             hjust = 0.5, vjust = 3, size = 2)
+    
 
   p3 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_final_true)) +
     ggplot2::geom_point(alpha = 0.2) +
@@ -731,6 +737,7 @@ s1.1_results <- run_simulation_scenario(
 p1 <- panel_plot_row6(s1.1_results$plots)
 p1
 
+<<<<<<< HEAD
 s1.1_results$data$e_init[1:10]
 s1.1_results$data$e_final[1:10]
 s1.1_results$slopes
@@ -744,6 +751,21 @@ s1.1_results$slopes$estimate[1] + (1 - rho2)
 
 #so b_kp = b_obs + (1 - rho2)
 coef(lm(s1.1_results$data$log_final_obs ~ s1.1_results$data$log_init_obs))[[2]]
+=======
+df <- s1.1_results$data
+b_obs <- s1.1_results$slopes$estimate[1]; b_obs
+bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
+r <- cor(df$log_final_obs, df$log_init_obs); r
+r2 <- 2*r*sd(df$log_final_obs)*sd(df$log_init_obs) / (var(df$log_final_obs) + var(df$log_init_obs))
+v <- sd(df$log_final_obs) / sd(df$log_init_obs); v
+r * v   # equivalent to bfi
+(1 - r * v) * -1  # equivalent to b_obs (* -1 because KP framed as m1-m2 instead of m2-m1)
+r * v - 1 # also equivalent ^^
+b_obs + (1 - r2)  # equivalent to b_kp_adj
+r2 - 1
+b_kp <- s1.1_results$slopes$estimate[2]; b_kp
+r * v - r2
+>>>>>>> 2a93856dea900379970d09b069907fad2fbb5426
 ```
 
 * Confirms spurious negative relationship between observed change and initial is due to measurement error 
@@ -769,6 +791,7 @@ p2 <- annotated_panel_plot2(s1.2_results$plots)
 p2 <- panel_plot_row6(s1.2_results$plots)
 p2
 
+<<<<<<< HEAD
 s1.2_results$slopes
 
 rho <- cor.test(s1.2_results$data$log_init_obs, s1.2_results$data$log_final_obs)$estimate
@@ -779,6 +802,20 @@ s1.2_results$slopes$estimate[1] + (1 - rho)
 
 #so b_kp = b_obs + (1 - rho)
 coef(lm(s1.2_results$data$log_final_obs ~ s1.2_results$data$log_init_obs))[[2]]
+=======
+df <- s1.2_results$data
+b_obs <- s1.2_results$slopes$estimate[1]; b_obs
+bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
+r <- cor(df$log_final_obs, df$log_init_obs); r
+r2 <- 2*r*sd(df$log_final_obs)*sd(df$log_init_obs) / (var(df$log_final_obs) + var(df$log_init_obs))
+v <- sd(df$log_final_obs) / sd(df$log_init_obs); v
+r * v   # equivalent to bfi
+(1 - r * v) * -1  # equivalent to b_obs (* -1 because KP framed as m1-m2 instead of m2-m1)
+r * v - 1
+b_obs + (1 - r)  # equivalent to b_kp_adj
+b_kp <- s1.2_results$slopes$estimate[2]; b_kp
+
+>>>>>>> 2a93856dea900379970d09b069907fad2fbb5426
 ```
 
 * Confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean when measurement error is minimal).
@@ -888,9 +925,10 @@ s2.4_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s2.4_results$plots)
+#annotated_panel_plot(s2.4_results$plots)
 p6 <- annotated_panel_plot2(s2.4_results$plots)
 p6 <- panel_plot_row6(s2.4_results$plots)
+p6
 ```
 
 ## G: True relationship, with no meas err and no v_ind
