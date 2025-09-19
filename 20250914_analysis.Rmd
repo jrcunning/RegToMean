@@ -573,7 +573,7 @@ text_panel_math <- function(line1,
 ## A: no true relationship, no individual variation in change, but there is measurement error
 ```{r s1.1, fig.width = 10, fig.height = 5.5}
 # Set number of individuals for simulations
-n <- 200
+n <- 10000#200
 
 # Set variances
 v_pop <- 1         # true variance in initial trait values
@@ -750,6 +750,13 @@ b_obs + (1 - r2)  # equivalent to b_kp_adj
 r2 - 1
 b_kp <- s1.1_results$slopes$estimate[2]; b_kp
 r * v - r2
+
+
+
+# Hayes
+# b_obs = -v_err/(v_pop + v_err)?
+-v_err/(v_pop + v_err)
+b_obs
 ```
 
 * Confirms spurious negative relationship between observed change and initial is due to measurement error 
