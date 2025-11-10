@@ -90,6 +90,45 @@ blomqvist_pseudo_exact <- function(x, y, b_blom) {
   a + b_blom * x + e
 }
 
+# Function go get moment estimator in the no-het case 
+moment.nohet <- function(x1, x2){
+  z1 <- var(x2) - var(x1)
+  z2 <- cov(x2 - x1, x1) + var(x1)
+  w <- z1/z2
+  if(cov(x1,x2) > 0){b <- (-(2-w) + sqrt((2-w)^2 + 4*w) )/2}
+  if(cov(x1,x2) < 0){b <- (-(2-w) - sqrt((2-w)^2 + 4*w) )/2}
+  if(cov(x1,x2) == 0){b <- -1}
+  b
+}
+
+moment.nohet.safe <- function(x1, x2){
+  z1 <- var(x2) - var(x1)
+  z2 <- cov(x2 - x1, x1) + var(x1)
+  w  <- z1 / z2
+
+  if (!is.finite(w) || abs(z2) < 1e-8) return(NA_real_)
+
+  disc <- (2 - w)^2 + 4*w
+  if (disc < 0) return(NA_real_)
+
+  root_plus  <- (-(2 - w) + sqrt(disc)) / 2
+  root_minus <- (-(2 - w) - sqrt(disc)) / 2
+
+  b <- ifelse(cov(x1,x2) > 0, root_plus, root_minus)
+  if (!is.finite(b) || abs(b) > 10) b <- NA_real_
+  b
+}
+
+
+# Function to adjust y values using moment slope
+moment.nohet_psuedo_exact <- function(x, y, b_mom) {
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  e <- resid(lm(y ~ x))                 # orthogonal to 1 and x
+  a <- mean(y) - b_mom * mean(x)       # preserve mean
+  a + b_mom * x + e
+}
+
 
 
 ## GGplot var.test to use in chiolero plot
@@ -387,7 +426,7 @@ annotated_panel_plot2 <- function(plots) {
 
 
 
-panel_plot_row6 <- function(plots) {
+panel_plot_row7 <- function(plots) {
   
   p1 <- plots[[1]] +
     scale_x_continuous(breaks = c(1, 2), 
@@ -428,6 +467,12 @@ panel_plot_row6 <- function(plots) {
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p6 <- plots[[9]] +
+    labs(title = NULL, x = "initial", y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = -2)))
+  
+  p7 <- plots[[10]] +
     labs(title = NULL, x = "method", y = "slope") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
@@ -460,44 +505,16 @@ panel_plot_row6 <- function(plots) {
   }
   
   myPlots <- cowplot::plot_grid(text_panel(b, v_ind, v_err, base_size = 8),
-                                p1, p2, p3, p4, p5, p6, ncol = 7, align = "h",
-                                rel_widths = c(0.7, 1, 1, 1, 1, 1, 1))
+                                p1, p2, p3, p4, p5, p6, p7, ncol = 8, align = "h",
+                                rel_widths = c(0.5, 0.7, 0.7, 1, 1, 1, 1, 1))
   return(myPlots)
 }
 
 
 
 
-# text_panel2 <- function(label, base_size = 8) {
-#    ggplot() +
-#       geom_text(
-#         data = NULL,
-#         aes(x = 0.5, y = 0.5, label = label),
-#         hjust = 0.5, vjust = 0.5, 
-#         parse = TRUE,
-#         lineheight = 1.05, fontface = "bold",
-#         size = base_size * 0.35
-#       ) +
-#       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
-#       theme_void(base_size = base_size) +
-#       theme(plot.margin = margin(3, 3, 3, 3))
-# }
-
 # install.packages("ggtext")
 library(ggtext)
-
-# text_panel_html <- function(label, base_size = 8) {
-#   ggplot() +
-#     geom_richtext(
-#       aes(0.5, 0.5,
-#           label = label),
-#       hjust = 0.5, vjust = 0.5, size = base_size * 0.35,
-#       fill = NA, label.color = NA
-#     ) +
-#     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
-#     theme_void(base_size = base_size) +
-#     theme(plot.margin = margin(3, 3, 3, 3))
-# }
 
 text_panel_html <- function(line1,
                             line2 = NULL,
@@ -573,7 +590,7 @@ text_panel_math <- function(line1,
 ## A: no true relationship, no individual variation in change, but there is measurement error
 ```{r s1.1, fig.width = 10, fig.height = 5.5}
 # Set number of individuals for simulations
-n <- 10000#200
+n <- 200
 
 # Set variances
 v_pop <- 1         # true variance in initial trait values
@@ -656,13 +673,37 @@ run_simulation_scenario <- function(
     R = 2000
   )
   b_blomq_adj_confint_boot <- stats::quantile(blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
+  
+   # --- 5) Method of moments (point + bootstrap CI) ---
+  b_mom_adj <- moment.nohet(df1$log_init_obs, df1$log_final_obs)
+
+  # pseudo-exact y’ (used only for plotting panel, not for CI)
+  df1 <- df1 %>%
+    dplyr::mutate(
+      log_change_kp_adj    = kp_full$adj.growth,
+      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq_adj),
+      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_final_obs, b_mom_adj)
+    )
+
+  set.seed(seed + 200)
+  mom_boot <- boot::boot(
+    data = df1,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      b_i <- moment.nohet(di$log_init_obs, di$log_final_obs)
+    },
+    R = 2000
+  )
+  b_mom_adj_confint_boot <- stats::quantile(mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
   # --- 5) Slopes tibble ---
   slopes_tbl <- tibble::tibble(
-    method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
-    estimate = c(b_obs, b_kp_adj, b_blomq_adj),
-    ci_lower = c(b_obs_confint_boot[1], b_kp_adj_confint_boot[1], b_blomq_adj_confint_boot[1]),
-    ci_upper = c(b_obs_confint_boot[2], b_kp_adj_confint_boot[2], b_blomq_adj_confint_boot[2])
+    method   = factor(c("Obs", "K-P", "Blomq", "Mom"), levels = c("Obs", "K-P", "Blomq", "Mom")),
+    estimate = c(b_obs, b_kp_adj, b_blomq_adj, b_mom_adj),
+    ci_lower = c(b_obs_confint_boot[1], b_kp_adj_confint_boot[1], 
+                 b_blomq_adj_confint_boot[1], b_mom_adj_confint_boot[1]),
+    ci_upper = c(b_obs_confint_boot[2], b_kp_adj_confint_boot[2], 
+                 b_blomq_adj_confint_boot[2], b_mom_adj_confint_boot[2])
   )
 
   # --- 6) Axis ranges for plots ---
@@ -679,9 +720,13 @@ run_simulation_scenario <- function(
   # --- 7) Plots (uses your existing helpers: chiolero_plot, annotated_panel_plot) ---
   p1 <- chiolero_plot(df1, log_init_true,  log_final_true) + ggtitle("True")
   p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)  + ggtitle("Observed") +
-    annotate("text", x = 1.5, y = Inf, 
-             label = paste0("s2/s1= ", round(theta, 3)), 
-             hjust = 0.5, vjust = 3, size = 2)
+annotate(
+  "text",
+  x = 1.5, y = Inf,
+  label = paste0("s[2]/s[1]==", round(theta, 3)),
+  parse = TRUE,
+  hjust = 0.5, vjust = 2, size = 2
+)
     
 
   p3 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_final_true)) +
@@ -709,8 +754,9 @@ run_simulation_scenario <- function(
   p6 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_obs) + ggtitle("Observed")
   p7 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_kp_adj) + ggtitle("Kelly-Price")
   p8 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_blomq_adj) + ggtitle("Blomqvist")
+  p9 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_mom_adj) + ggtitle("Mom.")
 
-  p9 <- ggplot2::ggplot(slopes_tbl, ggplot2::aes(x = method, y = estimate)) +
+  p10 <- ggplot2::ggplot(slopes_tbl, ggplot2::aes(x = method, y = estimate)) +
     ggplot2::geom_point() +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
     ggplot2::geom_hline(yintercept = b, linetype = 1, color = "red") +
@@ -718,7 +764,7 @@ run_simulation_scenario <- function(
     ggplot2::labs(x = NULL, y = "Slope") +
     ylim(-0.61, 0.61)
 
-  plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9)
+  plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
 
   # Optional: assemble your panel externally with annotated_panel_plot(plots1)
   list(
@@ -734,10 +780,10 @@ s1.1_results <- run_simulation_scenario(
 
 #annotated_panel_plot(s1.1_results$plots)
 #p1 <- annotated_panel_plot2(s1.1_results$plots)
-p1 <- panel_plot_row6(s1.1_results$plots)
+p1 <- panel_plot_row7(s1.1_results$plots)
 p1
 
-<<<<<<< HEAD
+
 s1.1_results$data$e_init[1:10]
 s1.1_results$data$e_final[1:10]
 s1.1_results$slopes
@@ -751,7 +797,7 @@ s1.1_results$slopes$estimate[1] + (1 - rho2)
 
 #so b_kp = b_obs + (1 - rho2)
 coef(lm(s1.1_results$data$log_final_obs ~ s1.1_results$data$log_init_obs))[[2]]
-=======
+
 df <- s1.1_results$data
 b_obs <- s1.1_results$slopes$estimate[1]; b_obs
 bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
@@ -765,7 +811,7 @@ b_obs + (1 - r2)  # equivalent to b_kp_adj
 r2 - 1
 b_kp <- s1.1_results$slopes$estimate[2]; b_kp
 r * v - r2
-<<<<<<< HEAD
+
 
 
 
@@ -773,9 +819,14 @@ r * v - r2
 # b_obs = -v_err/(v_pop + v_err)?
 -v_err/(v_pop + v_err)
 b_obs
-=======
->>>>>>> 2a93856dea900379970d09b069907fad2fbb5426
->>>>>>> 4987e0896296e85730e18e80419c8a6afe24d0a8
+
+
+
+
+# test variance of blomq-adjusted points
+var(s1.1_results$data$log_change_obs)
+var(s1.1_results$data$log_change_kp_adj)
+var(s1.1_results$data$log_change_blomq_adj)
 ```
 
 * Confirms spurious negative relationship between observed change and initial is due to measurement error 
@@ -796,12 +847,12 @@ s1.2_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s1.2_results$plots)
-p2 <- annotated_panel_plot2(s1.2_results$plots)
-p2 <- panel_plot_row6(s1.2_results$plots)
+#annotated_panel_plot(s1.2_results$plots)
+#p2 <- annotated_panel_plot2(s1.2_results$plots)
+p2 <- panel_plot_row7(s1.2_results$plots)
 p2
 
-<<<<<<< HEAD
+
 s1.2_results$slopes
 
 rho <- cor.test(s1.2_results$data$log_init_obs, s1.2_results$data$log_final_obs)$estimate
@@ -812,7 +863,7 @@ s1.2_results$slopes$estimate[1] + (1 - rho)
 
 #so b_kp = b_obs + (1 - rho)
 coef(lm(s1.2_results$data$log_final_obs ~ s1.2_results$data$log_init_obs))[[2]]
-=======
+
 df <- s1.2_results$data
 b_obs <- s1.2_results$slopes$estimate[1]; b_obs
 bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
@@ -825,7 +876,7 @@ r * v - 1
 b_obs + (1 - r)  # equivalent to b_kp_adj
 b_kp <- s1.2_results$slopes$estimate[2]; b_kp
 
->>>>>>> 2a93856dea900379970d09b069907fad2fbb5426
+
 ```
 
 * Confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean when measurement error is minimal).
@@ -848,9 +899,9 @@ s1.3_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s1.3_results$plots)
-p3 <- annotated_panel_plot2(s1.3_results$plots)
-p3 <- panel_plot_row6(s1.3_results$plots)
+#annotated_panel_plot(s1.3_results$plots)
+#p3 <- annotated_panel_plot2(s1.3_results$plots)
+p3 <- panel_plot_row7(s1.3_results$plots)
 
 #cowplot::plot_grid(p1, p2, p3, nrow = 3)
 ```
@@ -886,10 +937,10 @@ s2.2_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s2.2_results$plots)
-p4 <- annotated_panel_plot2(s2.2_results$plots)
-p4 <- panel_plot_row6(s2.2_results$plots)
-
+#annotated_panel_plot(s2.2_results$plots)
+#p4 <- annotated_panel_plot2(s2.2_results$plots)
+p4 <- panel_plot_row7(s2.2_results$plots)
+p4
 s2.2_results$slopes
 
 rho <- cor.test(s2.2_results$data$log_init_obs, s2.2_results$data$log_final_obs)$estimate
@@ -905,9 +956,9 @@ s2.2_results$slopes$estimate[1] + (1 - rho)
 ```{r s2.4, fig.width = 10, fig.height = 5.5}
 # Weaker true relationship and individual variance, minimal measurement error
 # Total variance = b² + v_ind + 2*v_err = 0.025 + 0.965 + 0.01 = 1.00
-b     <- -0.3
+b     <- -0.5
 v_err <- 0
-v_ind <- 1#1 - b^2 - 2 * v_err
+v_ind <- 0.75#1 - b^2 - 2 * v_err
 #v_err <- (1 - b^2 - v_ind) / 2  # = 0
 
 # Run the simulation with the base plot templates (your plots1 list)
@@ -915,9 +966,10 @@ s2.3_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s2.3_results$plots)
-p5 <- annotated_panel_plot2(s2.3_results$plots)
-p5 <- panel_plot_row6(s2.3_results$plots)
+#annotated_panel_plot(s2.3_results$plots)
+#p5 <- annotated_panel_plot2(s2.3_results$plots)
+p5 <- panel_plot_row7(s2.3_results$plots)
+p5
 ```
 
 * When individual variance dominates along with a true relationship and measurement error is minimal, the observed relationship is accurate, but K-P produces spurious positive relationship. Blomqvist gets it right.
@@ -936,8 +988,8 @@ s2.4_results <- run_simulation_scenario(
 
 # Plot it
 #annotated_panel_plot(s2.4_results$plots)
-p6 <- annotated_panel_plot2(s2.4_results$plots)
-p6 <- panel_plot_row6(s2.4_results$plots)
+#p6 <- annotated_panel_plot2(s2.4_results$plots)
+p6 <- panel_plot_row7(s2.4_results$plots)
 p6
 ```
 
@@ -954,9 +1006,9 @@ s2.5_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-annotated_panel_plot(s2.5_results$plots)
-p7 <- annotated_panel_plot2(s2.5_results$plots)
-p7 <- panel_plot_row6(s2.5_results$plots)
+#annotated_panel_plot(s2.5_results$plots)
+#p7 <- annotated_panel_plot2(s2.5_results$plots)
+p7 <- panel_plot_row7(s2.5_results$plots)
 p7
 ```
 
@@ -966,7 +1018,7 @@ p7
 
 # Make a column-label header row (7 labels by default)
 make_column_header <- function(
-  labels = paste("Col", 1:7),
+  labels = paste("Col", 1:8),
   rel_widths = rep(1, length(labels)),
   base_size = 10,
   face = "bold"
@@ -986,8 +1038,8 @@ make_column_header <- function(
 # (Set rel_widths to match how you built each row of 7 panels)
 header <- make_column_header(
   labels = c("1. Parameters", "2. True\nvalues", "3. Observed\nvalues", 
-             "4. Observed", "5. Kelly-Price", "6. Blomqvist", "7. Slope\ncomparison"),
-  rel_widths = c(0.7, rep(1, 6)),      # <- use the SAME rel_widths you used for each row
+             "4. Observed", "5. Kelly-Price", "6. Blomqvist", "7. Moments", "8. Slope\ncomparison"),
+  rel_widths = c(0.7, 0.5, 0.5, rep(1, 5)),      # <- use the SAME rel_widths you used for each row
   base_size = 10
 )
 
@@ -1040,23 +1092,37 @@ evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind,
     k_blomq <- v_err / (v_pop + v_err)
     b_blomq <- (b_obs + k_blomq) / (1 - k_blomq)
     
+    # Moment adjusted slope
+    b_mom <- moment.nohet.safe(syn_df$log_init_obs, syn_df$log_final_obs)
+    
+    # Estimator biases
+    obs_bias <- b_obs - b_true
+    blomq_bias <- b_blomq - b_true
+    kp_bias <- b_kp - b_true
+    mom_bias <- b_mom - b_true
+    
     # Variance test p value
     var_p <- var.test(syn_df$log_init_obs, syn_df$log_final_obs)$p.value
     
-    # Results of all estimates
+    # Results of all estimates and biases
     tibble(
       b_obs = b_obs,
       b_blomq = b_blomq,
+      b_mom = b_mom,
       b_kp = b_kp,
       b_true = b_true,
-      var_p = var_p
+      var_p = var_p,
+      obs_bias = obs_bias,
+      blomq_bias = blomq_bias,
+      kp_bias = kp_bias,
+      mom_bias = mom_bias
     )
   })
 
   # Summarize results across replicates using `across()`
   summarised <- replicate_results %>%
     summarise(across(
-      .cols = c(b_obs, b_blomq, b_kp, var_p),
+      .cols = c(b_obs, b_blomq, b_mom, b_kp, var_p, obs_bias, blomq_bias, kp_bias, mom_bias),
       .fns = list(
         mean = ~ mean(.x, na.rm = TRUE),
         sd   = ~ sd(.x, na.rm = TRUE)
@@ -1083,8 +1149,10 @@ evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind,
 param_grid <- expand.grid(
   v_pop = 1,                                        # always standardize to v_pop = 1
   k = c(0.01, 1/6, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
-  v_ind_rel = c(10, 1, 0.01),                      # range of true v_ind in synthetic datasets
-  b_true = seq(-1, 1, 0.25),   # range of true slopes in synthetic datasets
+  #k = c(0.01, 1/8, 1/3),
+  v_ind_rel = c(5, 0.5, 0.01),                      # range of true v_ind in synthetic datasets
+  #v_ind_rel = c(0, 0.2, 0.4),
+  b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),   # range of true slopes in synthetic datasets
   reps = 1000,                                       # n replicate synthetic datasets for each parameter set
   n = 200                    # size of each synthetic dataset (should represent a 'typical' scientific study)
 ) 
@@ -1110,22 +1178,24 @@ results_grid <- future_pmap_dfr(
 saveRDS(results_grid, file = "results_grid.rds")
 results_grid <- readRDS("results_grid.rds")
 
-# Pivot to long format for plotting
+
+# Pivot bias to long format for plotting
 results_long <- results_grid %>%
   pivot_longer(
-    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean),
+    cols = c(obs_bias_mean, kp_bias_mean, blomq_bias_mean, mom_bias_mean),
     names_to = "method",
-    values_to = "estimate"
+    values_to = "error"
   ) %>%
   mutate(
     sd = case_when(
-      method == "b_obs_mean"    ~ b_obs_sd,
-      method == "b_kp_mean"     ~ b_kp_sd,
-      method == "b_blomq_mean"  ~ b_blomq_sd
-    ),
-    error = estimate - b_true
+      method == "obs_bias_mean"    ~ obs_bias_sd,
+      method == "kp_bias_mean"     ~ kp_bias_sd,
+      method == "blomq_bias_mean"  ~ blomq_bias_sd,
+      method == "mom_bias_mean"    ~ mom_bias_sd
+    )
   ) %>%
-  mutate(v_ind = factor(v_ind, levels = c(10, 1, 0.01)))
+  mutate(v_ind = factor(v_ind, levels = c(5, 0.5, 0.01))) %>%
+  select(v_err, k, v_ind, b_true, method, error, sd)
 
 # Facet labeller 
 facet_labeller <- function(labels) {
@@ -1153,12 +1223,13 @@ facet_labeller <- function(labels) {
 
 lab_sig1 <- function(x) formatC(signif(x, 1), digits = 1, format = "fg")
 
+
 ggplot(results_long, aes(
   x = b_true,
-  y = pmax(pmin(error, 0.6), -0.6),
+  y = pmax(pmin(error, 0.75), -0.75),
   color = method,
   group = method,
-  shape = factor(ifelse(error > 0.6, 2, ifelse(error < -0.6, 6, 16)))
+  shape = factor(ifelse(error > 0.75, 2, ifelse(error < -0.75, 6, 16)))
 )) +
   geom_line(linewidth = 0.5, alpha = 0.6) +
   geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
@@ -1166,14 +1237,15 @@ ggplot(results_long, aes(
   scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
   scale_color_discrete(
     labels = c(
-      b_obs_mean = "Observed",
-      b_blomq_mean = "Blomqvist",
-      b_kp_mean = "Kelly-Price"
+      obs_bias_mean = "Observed",
+      blomq_bias_mean = "Blomqvist",
+      kp_bias_mean = "Kelly-Price",
+      mom_bias_mean = "Moment"
     )
   ) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   facet_grid(v_ind ~ k, labeller = facet_labeller) +
-  coord_cartesian(ylim = c(-0.6, 0.6)) +
+  coord_cartesian(ylim = c(-0.75, 0.75)) + #c(-0.6, 0.6)) +
   labs(
     x = "True slope of change vs. initial",
     y = "Slope error (estimate - true)",
@@ -1196,7 +1268,10 @@ ggplot(results_long, aes(
 ggsave(filename = "fig2.png", width = 160, height = 120, units = "mm", bg = "white")
 
 
+```
 
+
+```{r}
 ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape = method)) +
   #geom_point() +
   geom_ribbon(aes(ymin = b_true + error - sd, ymax = b_true + error + sd, fill = method), alpha = 0.5, color = NA) +
@@ -1340,6 +1415,7 @@ pdam_slopes_tbl <- tibble::tibble(
 # ## Compute new plot limit values
 pdam_trait <- range(c(pdam$log_init_obs, pdam$log_final_obs), na.rm = TRUE)
 pdam_change <- range(pdam$log_change_obs, na.rm = TRUE)
+pdam_theta <- sd(pdam$log_final_obs) / sd(pdam$log_init_obs)
 
 pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) + 
   scale_y_continuous(limits = c(-4.1, -0.9)) +
@@ -1349,7 +1425,14 @@ pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) +
     labs(title = NULL, x = "timepoint", y = "log S/H") +
     ggplot2::theme_minimal(base_size = 8) +
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = 1)))
+          axis.title.y = element_text(margin = margin(r = 1))) +
+  annotate(
+  "text",
+  x = 1.5, y = Inf,
+  label = paste0("s[2]/s[1]==", round(pdam_theta, 3)),
+  parse = TRUE,
+  hjust = 0.5, vjust = 2, size = 2
+)
 pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
@@ -1412,18 +1495,19 @@ pdam_plots <- cowplot::plot_grid(
     line2 = "bolditalic(P*'.'~damicornis)",
     line3 = " ",
     line4 = sprintf("n==bold(%s)", formatC(nrow(pdam), format = "fg")),
-    line5 = sprintf("sigma[X]^2==bold(%s)", formatC(pdam_var_x_abs - pdam_v_err_abs, format = "fg", digits = 3)),
-    line6 = sprintf("sigma[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
-    line7 = sprintf("sigma[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
+    line5 = sprintf("s[X]^2==bold(%s)", formatC(pdam_var_x_abs - pdam_v_err_abs, format = "fg", digits = 3)),
+    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
+    line7 = sprintf("s[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
   ),
   pdam_chiolero_plot, pdam_initchange_plot,
   pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, 
   nrow = 1, align = "h")
 
+# Something from Tu and Gilthorpe
 b_i <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[2]
 blomqvist_b(b_i, pdam_k)
 
-b_f <- coef(lm(log_change_obs ~ log_final_obs, data = pdam))[2]
+b_f <- coef(lm(-log_change_obs ~ log_final_obs, data = pdam))[2]
 blomqvist_b(b_f, pdam_k)
 ```
 
@@ -1537,6 +1621,7 @@ mill_slopes_tbl <- tibble::tibble(
 # ## Compute new plot limit values
 mill_trait <- range(c(mill$log_init_obs, mill$log_final_obs), na.rm = TRUE)
 mill_change <- range(mill$log_change_obs, na.rm = TRUE)
+mill_theta <- sd(mill$log_final_obs) / sd(mill$log_init_obs)
 
 mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) + 
   scale_y_continuous(limits = c(-0.5, 5.1)) +
@@ -1546,7 +1631,14 @@ mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) +
     labs(title = NULL, x = "timepoint", y = "log size") +
     ggplot2::theme_minimal(base_size = 8) +
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = 1)))
+          axis.title.y = element_text(margin = margin(r = 1))) +
+  annotate(
+  "text",
+  x = 1.5, y = Inf,
+  label = paste0("s[2]/s[1]==", round(mill_theta, 3)),
+  parse = TRUE,
+  hjust = 0.5, vjust = 2, size = 2
+)
 mill_initfinal_plot <- ggplot(mill, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
@@ -1603,9 +1695,9 @@ mill_plots <- cowplot::plot_grid(
     line2 = "bolditalic(A*'.'~cervicornis)",
     line3 = " ",
     line4 = sprintf("n==bold(%s)", formatC(nrow(mill), format = "fg")),
-    line5 = sprintf("sigma[X]^2==bold(%s)", formatC(mill_var_x_abs - mill_v_err_abs, format = "fg", digits = 3)),
-    line6 = sprintf("sigma[Delta[ind]]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
-    line7 = sprintf("sigma[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
+    line5 = sprintf("s[X]^2==bold(%s)", formatC(mill_var_x_abs - mill_v_err_abs, format = "fg", digits = 3)),
+    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
+    line7 = sprintf("s[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
   ),
   mill_chiolero_plot, mill_initchange_plot,
   mill_kp_plot, mill_blomq_plot, mill_slopes_plot, 
@@ -1667,7 +1759,7 @@ v_pop <- 1
 tsym <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
-annotated_panel_plot(tsym$plots)
+#annotated_panel_plot(tsym$plots)
 
 tsym$data
 
