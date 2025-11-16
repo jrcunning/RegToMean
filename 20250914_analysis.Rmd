@@ -1148,7 +1148,7 @@ evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind,
 # Create parameter grid for testing all slope correction methods
 param_grid <- expand.grid(
   v_pop = 1,                                        # always standardize to v_pop = 1
-  k = c(0.01, 1/6, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
+  k = c(0.0099, 0.23, 0.5),                           # measurement imprecision (v_err / (v_pop + v_err))
   #k = c(0.01, 1/8, 1/3),
   v_ind_rel = c(5, 0.5, 0.01),                      # range of true v_ind in synthetic datasets
   #v_ind_rel = c(0, 0.2, 0.4),
@@ -1272,9 +1272,27 @@ ggsave(filename = "fig2.png", width = 160, height = 120, units = "mm", bg = "whi
 
 
 ```{r}
-ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape = method)) +
+# Pivot estimators to long format for plotting
+results_long2 <- results_grid %>%
+  pivot_longer(
+    cols = c(b_obs_mean, b_kp_mean, b_blomq_mean, b_mom_mean),
+    names_to = "method",
+    values_to = "estimate"
+  ) %>%
+  mutate(
+    sd = case_when(
+      method == "b_obs_mean"    ~ b_obs_sd,
+      method == "b_kp_mean"     ~ b_kp_sd,
+      method == "b_blomq_mean"  ~ b_blomq_sd,
+      method == "b_mom_mean"    ~ b_mom_sd
+    )
+  ) %>%
+  mutate(v_ind = factor(v_ind, levels = c(5, 0.5, 0.01))) %>%
+  select(v_err, k, v_ind, b_true, method, estimate, sd)
+
+ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = method)) +
   #geom_point() +
-  geom_ribbon(aes(ymin = b_true + error - sd, ymax = b_true + error + sd, fill = method), alpha = 0.5, color = NA) +
+  geom_ribbon(aes(ymin = estimate - sd, ymax = estimate + sd, fill = method), alpha = 0.5, color = NA) +
   #geom_line(aes(group = method)) +
   geom_abline(slope = 1, intercept = 0, lty = 2) +
   facet_grid(v_ind ~ k, labeller = facet_labeller) +
@@ -1288,7 +1306,7 @@ ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape =
   ) +
   scale_x_continuous(
     sec.axis = sec_axis(~ .,
-                        name = expression(Initial~measurement~error~~(sigma[e]^2/sigma[X]^2)),
+                        name = expression(Measurement~error~~(sigma[e]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL
     )
   ) +
@@ -1297,7 +1315,8 @@ ggplot(results_long, aes(x = b_true, y = b_true + error, color = method, shape =
                         name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL)
   ) +
-  labs(x = "True slope", y = "Estimated slope")
+  labs(x = "True slope", y = "Estimated slope") +
+  coord_fixed(xlim = c(-0.9, 0.9), ylim = c(-0.9, 0.9), expand = 0)
 ```
 
 * Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
