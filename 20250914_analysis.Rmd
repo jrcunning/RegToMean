@@ -170,6 +170,7 @@ StatVarTest <- ggproto("StatVarTest", Stat,
     # Create label
     label <- paste0(#"v_i:v_f = ", signif(vtest$estimate, 3),
                     "p = ", signif(vtest$p.value, 3))
+    
 
     # Determine label position
     data.frame(
@@ -181,71 +182,6 @@ StatVarTest <- ggproto("StatVarTest", Stat,
 )
 
 
-
-# # Chiolero plot function
-# chiolero_plot <- function(df, init_var, final_var, label = NULL) {
-#   init_sym <- ensym(init_var)
-#   final_sym <- ensym(final_var)
-#   init_name <- as_label(init_sym)
-#   final_name <- as_label(final_sym)
-# 
-#   # Get min and max across both variables
-#   y_range <- range(c(pull(df, !!init_sym), pull(df, !!final_sym)), na.rm = TRUE)
-# 
-#   ggplot(df, aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
-#     geom_segment(alpha = 0.1) +
-#     geom_point(aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2) +
-#     geom_point(aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2) +
-#     scale_y_continuous(limits = y_range) +
-#     scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
-#                        expand = c(0.15, 0.15)) +
-#     labs(x = "timepoint", y = "value") +
-#     stat_var_test(
-#       mapping = aes(x = !!init_sym, y = !!final_sym, group = 1),
-#       label.x = 1.5,
-#       label.y = Inf,
-#       hjust = 0.5, vjust = 1, size = 2
-#     ) +
-#     theme(axis.title.y = element_text(margin = margin(r = -2)))
-# }
-
-# chiolero_plot <- function(df, init_var, final_var, label = NULL, snap_to_even = TRUE) {
-#   init_sym  <- rlang::ensym(init_var)
-#   final_sym <- rlang::ensym(final_var)
-#   init_name <- rlang::as_label(init_sym)
-#   final_name <- rlang::as_label(final_sym)
-# 
-#   # data-driven range
-#   rng <- range(c(dplyr::pull(df, !!init_sym), dplyr::pull(df, !!final_sym)), na.rm = TRUE)
-# 
-#   if (snap_to_even) {
-#     m <- max(abs(rng))
-#     y_min <- -ceiling(m / 2) * 2
-#     y_max <-  ceiling(m / 2) * 2
-#   } else {
-#     y_min <- rng[1]; y_max <- rng[2]
-#   }
-#   if (y_min == y_max) { y_min <- y_min - 2; y_max <- y_max + 2 }
-# 
-#   major <- seq(y_min, y_max, by = 2)
-#   minor <- seq(y_min, y_max, by = 1)
-# 
-#   ggplot2::ggplot(df, ggplot2::aes(x = 1, xend = 2, y = !!init_sym, yend = !!final_sym)) +
-#     ggplot2::geom_segment(alpha = 0.1, position = position_jitter(width = 0.1)) +
-#     ggplot2::geom_point(ggplot2::aes(x = 1, y = !!init_sym), size = 1.5, alpha = 0.2,
-#                         position = position_jitter(width = 0.1)) +
-#     ggplot2::geom_point(ggplot2::aes(x = 2, y = !!final_sym), size = 1.5, alpha = 0.2,
-#                         position = position_jitter(width = 0.1)) +
-#     ggplot2::scale_y_continuous(limits = c(y_min, y_max),
-#                                 breaks = major, minor_breaks = minor) +
-#     ggplot2::scale_x_continuous(breaks = c(1, 2),
-#                                 labels = c(init_name, final_name),
-#                                 expand = c(0.15, 0.15)) +
-#     ggplot2::labs(x = "timepoint", y = "value") +
-#     stat_var_test(mapping = ggplot2::aes(x = !!init_sym, y = !!final_sym, group = 1),
-#                   label.x = 1.5, label.y = Inf, hjust = 0.5, vjust = 1, size = 2) +
-#     ggplot2::theme(axis.title.y = ggplot2::element_text(margin = ggplot2::margin(r = -2)))
-# }
 
 # Jittered Chiolero plot: segments line up with jittered points
 chiolero_plot <- function(df, init_var, final_var,
@@ -278,7 +214,7 @@ chiolero_plot <- function(df, init_var, final_var,
   minor_y <- seq(-2 * ceiling(m/2), 2 * ceiling(m/2), by = 1)
 
   ggplot(d_plot, aes(x = x1, y = y1)) +
-    geom_segment(aes(x = x1, xend = x2, y = y1, yend = y2), alpha = 0.12) +
+    geom_segment(aes(x = x1, xend = x2, y = y1, yend = y2), alpha = 0.12, linewidth = 0.2) +
     geom_point(size = 1.4, alpha = 0.25) +
     geom_point(aes(x = x2, y = y2), size = 1.4, alpha = 0.25) +
     stat_var_test(mapping = ggplot2::aes(x = !!init_sym, y = !!final_sym, group = 1),
@@ -299,129 +235,129 @@ chiolero_plot <- function(df, init_var, final_var,
 
 
 
-# Run simulation scenario function
-run_simulation_scenario <- function(n, b, v_ind, v_err, v_pop = 1, base_plots) {
-  set.seed(1)
-  
-  # Simulate data
-  df <- tibble(
-    log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
-    log_change_true = b * log_init_true +
-                      rnorm(n, mean = 0, sd = sqrt(v_ind)),
-    log_final_true = log_init_true + log_change_true,
-    e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),
-    e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),
-    log_init_obs = log_init_true + e_init,
-    log_final_obs = log_final_true + e_final,
-    log_change_obs = log_final_obs - log_init_obs
-  )
-  
-  # Kelly-Price corrections
-  df <- df %>%
-    mutate(
-      log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
-      log_change_obs_adj  = rttm.adj(log_init_obs, log_final_obs)[, 3]
-    )
-  
-  # Update all plots using this new dataset
-  updated_plots <- map(base_plots, ~ .x %+% df)
-  
-  # Return both the data and plots (if you want to access both)
-  list(data = df, plots = updated_plots)
-}
+# # Run simulation scenario function
+# run_simulation_scenario <- function(n, b, v_ind, v_err, v_pop = 1, base_plots) {
+#   set.seed(1)
+#   
+#   # Simulate data
+#   df <- tibble(
+#     log_init_true = rnorm(n, mean = 0, sd = sqrt(v_pop)),
+#     log_change_true = b * log_init_true +
+#                       rnorm(n, mean = 0, sd = sqrt(v_ind)),
+#     log_final_true = log_init_true + log_change_true,
+#     e_init = rnorm(n, mean = 0, sd = sqrt(v_err)),
+#     e_final = rnorm(n, mean = 0, sd = sqrt(v_err)),
+#     log_init_obs = log_init_true + e_init,
+#     log_final_obs = log_final_true + e_final,
+#     log_change_obs = log_final_obs - log_init_obs
+#   )
+#   
+#   # Kelly-Price corrections
+#   df <- df %>%
+#     mutate(
+#       log_change_true_adj = rttm.adj(log_init_true, log_final_true)[, 3],
+#       log_change_obs_adj  = rttm.adj(log_init_obs, log_final_obs)[, 3]
+#     )
+#   
+#   # Update all plots using this new dataset
+#   updated_plots <- map(base_plots, ~ .x %+% df)
+#   
+#   # Return both the data and plots (if you want to access both)
+#   list(data = df, plots = updated_plots)
+# }
 
 
 # Annotated scenario plot function
 library(patchwork)
 library(grid)
 
-annotated_panel_plot <- function(plots) {
-  if (length(plots) != 9) {
-    stop("You must supply a list of exactly 9 plots.")
-  }
-
-  # Pull parameter values from global environment
-  v_pop <- get("v_pop", envir = .GlobalEnv)
-  v_ind <- get("v_ind", envir = .GlobalEnv)
-  v_err <- get("v_err", envir = .GlobalEnv)
-  b     <- get("b", envir = .GlobalEnv)
-
-  # Build dynamic title text
-  title_text <- paste0("b = ", signif(b, 3),
-                       "; v_ind = ", signif(v_ind, 3), 
-                       "; v_err = ", signif(v_err, 3))
-
-  # Arrange plots in 2×4 grid
-  plot_grid <- cowplot::plot_grid(
-    plots[[1]], plots[[2]], plots[[3]], plots[[4]], NULL,
-    plots[[5]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
-    ncol = 5,
-    align = "hv"
-  )
-
-  # Add spacer row for annotations
-  plot_with_spacer <- plot_spacer() / plot_grid +
-    plot_layout(heights = c(0.05, 1))
-
-  # Print the plot layout
-  print(plot_with_spacer)
-
-  # Top-left title
-  grid.text(title_text, x = 0, y = 0.975, just = "left",
-            gp = gpar(fontsize = 13, fontface = "bold"))
-
-  # # Column headers
-  # grid.text("Initial & Final Values", x = 0.2, y = 0.92, just = "left",
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-  # grid.text("Change vs. Initial", x = 0.57, y = 0.92, just = "left",
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-  # grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-  # grid.text("Blomq Adjusted", x = 0.88, y = 0.92, just = "left",
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-  # 
-  # # Row labels
-  # grid.text("True values", x = 0.01, y = 0.675, rot = 90,
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-  # grid.text("Observed values", x = 0.01, y = 0.25, rot = 90,
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-}
-
-
-annotated_panel_plot2 <- function(plots) {
-  if (length(plots) != 9) {
-    stop("You must supply a list of exactly 9 plots.")
-  }
-
-  # Pull parameter values from global environment
-  v_pop <- get("v_pop", envir = .GlobalEnv)
-  v_ind <- get("v_ind", envir = .GlobalEnv)
-  v_err <- get("v_err", envir = .GlobalEnv)
-  b     <- get("b", envir = .GlobalEnv)
-
-  # Build dynamic title text
-  title_text <- paste0("b = ", signif(b, 3),
-                       "; v_ind = ", signif(v_ind, 3), 
-                       "; v_err = ", signif(v_err, 3))
-
-  # Arrange plots in 2×4 grid
-  plot_grid <- cowplot::plot_grid(
-    plots[[1]], plots[[2]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
-    ncol = 6,
-    align = "hv"
-  )
-
-  # Add spacer row for annotations
-  # plot_with_spacer <- plot_spacer() / plot_grid +
-  #   plot_layout(heights = c(0.05, 1))
-
-  # Print the plot layout
-  # print(plot_grid)
-
-  # Top-left title
-  # grid.text(title_text, x = 0, y = 0.975, just = "left",
-  #           gp = gpar(fontsize = 13, fontface = "bold"))
-}
+# annotated_panel_plot <- function(plots) {
+#   if (length(plots) != 9) {
+#     stop("You must supply a list of exactly 9 plots.")
+#   }
+# 
+#   # Pull parameter values from global environment
+#   v_pop <- get("v_pop", envir = .GlobalEnv)
+#   v_ind <- get("v_ind", envir = .GlobalEnv)
+#   v_err <- get("v_err", envir = .GlobalEnv)
+#   b     <- get("b", envir = .GlobalEnv)
+# 
+#   # Build dynamic title text
+#   title_text <- paste0("b = ", signif(b, 3),
+#                        "; v_ind = ", signif(v_ind, 3), 
+#                        "; v_err = ", signif(v_err, 3))
+# 
+#   # Arrange plots in 2×4 grid
+#   plot_grid <- cowplot::plot_grid(
+#     plots[[1]], plots[[2]], plots[[3]], plots[[4]], NULL,
+#     plots[[5]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
+#     ncol = 5,
+#     align = "hv"
+#   )
+# 
+#   # Add spacer row for annotations
+#   plot_with_spacer <- plot_spacer() / plot_grid +
+#     plot_layout(heights = c(0.05, 1))
+# 
+#   # Print the plot layout
+#   print(plot_with_spacer)
+# 
+#   # Top-left title
+#   grid.text(title_text, x = 0, y = 0.975, just = "left",
+#             gp = gpar(fontsize = 13, fontface = "bold"))
+# 
+#   # # Column headers
+#   # grid.text("Initial & Final Values", x = 0.2, y = 0.92, just = "left",
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+#   # grid.text("Change vs. Initial", x = 0.57, y = 0.92, just = "left",
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+#   # grid.text("K-P Adjusted", x = 0.83, y = 0.92, just = "left",
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+#   # grid.text("Blomq Adjusted", x = 0.88, y = 0.92, just = "left",
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+#   # 
+#   # # Row labels
+#   # grid.text("True values", x = 0.01, y = 0.675, rot = 90,
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+#   # grid.text("Observed values", x = 0.01, y = 0.25, rot = 90,
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+# }
+# 
+# 
+# annotated_panel_plot2 <- function(plots) {
+#   if (length(plots) != 9) {
+#     stop("You must supply a list of exactly 9 plots.")
+#   }
+# 
+#   # Pull parameter values from global environment
+#   v_pop <- get("v_pop", envir = .GlobalEnv)
+#   v_ind <- get("v_ind", envir = .GlobalEnv)
+#   v_err <- get("v_err", envir = .GlobalEnv)
+#   b     <- get("b", envir = .GlobalEnv)
+# 
+#   # Build dynamic title text
+#   title_text <- paste0("b = ", signif(b, 3),
+#                        "; v_ind = ", signif(v_ind, 3), 
+#                        "; v_err = ", signif(v_err, 3))
+# 
+#   # Arrange plots in 2×4 grid
+#   plot_grid <- cowplot::plot_grid(
+#     plots[[1]], plots[[2]], plots[[6]], plots[[7]], plots[[8]], plots[[9]],
+#     ncol = 6,
+#     align = "hv"
+#   )
+# 
+#   # Add spacer row for annotations
+#   # plot_with_spacer <- plot_spacer() / plot_grid +
+#   #   plot_layout(heights = c(0.05, 1))
+# 
+#   # Print the plot layout
+#   # print(plot_grid)
+# 
+#   # Top-left title
+#   # grid.text(title_text, x = 0, y = 0.975, just = "left",
+#   #           gp = gpar(fontsize = 13, fontface = "bold"))
+# }
 
 
 
@@ -432,51 +368,55 @@ panel_plot_row7 <- function(plots) {
     scale_x_continuous(breaks = c(1, 2), 
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
-    labs(title = NULL, x = "timepoint", y = "value") +
+    labs(title = NULL, x = NULL, y = "value") +
     ggplot2::theme_minimal(base_size = 8) +
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = -2))) +
-    scale_y_continuous(limits =c(-4, 4), breaks = seq(-4, 4, 2), expand = c(0,0))
+          axis.title.y = element_text(margin = margin(r = -2)),
+          panel.grid.minor.x = element_blank()) +
+    scale_y_continuous(limits =c(-5, 5), breaks = seq(-4, 4, 2), expand = c(0,0))
   
   p2 <- plots[[2]] +
     scale_x_continuous(breaks = c(1, 2), 
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
-    labs(title = NULL, x = "timepoint", y = "value") +
+    labs(title = NULL, x = NULL, y = "value") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = -2))) +
-    scale_y_continuous(limits =c(-4, 4), breaks = seq(-4, 4, 2), expand = c(0,0))
+          axis.title.y = element_text(margin = margin(r = -2)),
+          panel.grid.minor.x = element_blank()) +
+    scale_y_continuous(limits =c(-5, 5), breaks = seq(-4, 4, 2), expand = c(0,0))
   
   p3 <- plots[[6]] +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p4 <- plots[[7]] +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p5 <- plots[[8]] +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p6 <- plots[[9]] +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p7 <- plots[[10]] +
-    labs(title = NULL, x = "method", y = "slope") +
+    labs(title = NULL, x = NULL, y = "slope") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = -2)))
+          axis.title.y = element_text(margin = margin(r = -2)),
+          axis.text.x = element_text(angle = 45)) +
+    coord_cartesian(ylim = c(-0.61, 0.61), clip = "off")
   
   # A text-only panel to slot into a row of plots
   text_panel <- function(b, v_ind, v_err, base_size = 8) {
@@ -506,14 +446,11 @@ panel_plot_row7 <- function(plots) {
   
   myPlots <- cowplot::plot_grid(text_panel(b, v_ind, v_err, base_size = 8),
                                 p1, p2, p3, p4, p5, p6, p7, ncol = 8, align = "h",
-                                rel_widths = c(0.5, 0.7, 0.7, 1, 1, 1, 1, 1))
+                                rel_widths = c(0.6, 0.6, 0.6, 1, 1, 1, 1, 1))
   return(myPlots)
 }
 
 
-
-
-# install.packages("ggtext")
 library(ggtext)
 
 text_panel_html <- function(line1,
@@ -659,7 +596,7 @@ run_simulation_scenario <- function(
   df1 <- df1 %>%
     dplyr::mutate(
       log_change_kp_adj    = kp_full$adj.growth,
-      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq_adj)
+      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_change_obs, b_blomq_adj)
     )
 
   set.seed(seed + 200)
@@ -674,15 +611,13 @@ run_simulation_scenario <- function(
   )
   b_blomq_adj_confint_boot <- stats::quantile(blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
   
-   # --- 5) Method of moments (point + bootstrap CI) ---
+  # --- 5) Method of moments (point + bootstrap CI) ---
   b_mom_adj <- moment.nohet(df1$log_init_obs, df1$log_final_obs)
 
   # pseudo-exact y’ (used only for plotting panel, not for CI)
   df1 <- df1 %>%
     dplyr::mutate(
-      log_change_kp_adj    = kp_full$adj.growth,
-      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_final_obs, b_blomq_adj),
-      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_final_obs, b_mom_adj)
+      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_change_obs, b_mom_adj) #####
     )
 
   set.seed(seed + 200)
@@ -698,7 +633,7 @@ run_simulation_scenario <- function(
 
   # --- 5) Slopes tibble ---
   slopes_tbl <- tibble::tibble(
-    method   = factor(c("Obs", "K-P", "Blomq", "Mom"), levels = c("Obs", "K-P", "Blomq", "Mom")),
+    method   = factor(c("Obs.", "K.–P.", "Blom.", "Mom."), levels = c("Obs.", "K.–P.", "Blom.", "Mom.")),
     estimate = c(b_obs, b_kp_adj, b_blomq_adj, b_mom_adj),
     ci_lower = c(b_obs_confint_boot[1], b_kp_adj_confint_boot[1], 
                  b_blomq_adj_confint_boot[1], b_mom_adj_confint_boot[1]),
@@ -761,8 +696,8 @@ annotate(
     ggplot2::geom_errorbar(ggplot2::aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
     ggplot2::geom_hline(yintercept = b, linetype = 1, color = "red") +
     ggplot2::geom_hline(yintercept = 0, linetype = 2) +
-    ggplot2::labs(x = NULL, y = "Slope") +
-    ylim(-0.61, 0.61)
+    ggplot2::labs(x = NULL, y = "Slope")# +
+    #ylim(-0.61, 0.61)
 
   plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
 
@@ -956,9 +891,9 @@ s2.2_results$slopes$estimate[1] + (1 - rho)
 ```{r s2.4, fig.width = 10, fig.height = 5.5}
 # Weaker true relationship and individual variance, minimal measurement error
 # Total variance = b² + v_ind + 2*v_err = 0.025 + 0.965 + 0.01 = 1.00
-b     <- -0.5
+b     <- -0.3
 v_err <- 0
-v_ind <- 0.75#1 - b^2 - 2 * v_err
+v_ind <- 1#1 - b^2 - 2 * v_err
 #v_err <- (1 - b^2 - v_ind) / 2  # = 0
 
 # Run the simulation with the base plot templates (your plots1 list)
@@ -1021,13 +956,14 @@ make_column_header <- function(
   labels = paste("Col", 1:8),
   rel_widths = rep(1, length(labels)),
   base_size = 10,
-  face = "bold"
+  face = "bold",
+  hjust = 0.5, vjust = 0.5
 ) {
   heads <- lapply(labels, function(lab) {
     cowplot::ggdraw() +
       cowplot::draw_label(
         lab, x = 0.6, y = 0.5,
-        hjust = 0.5, vjust = 0.5,
+        hjust = hjust, vjust = vjust,
         fontface = face, size = base_size
       )
   })
@@ -1037,18 +973,25 @@ make_column_header <- function(
 # EXAMPLE: combine header + your 4 rows
 # (Set rel_widths to match how you built each row of 7 panels)
 header <- make_column_header(
-  labels = c("1. Parameters", "2. True\nvalues", "3. Observed\nvalues", 
-             "4. Observed", "5. Kelly-Price", "6. Blomqvist", "7. Moments", "8. Slope\ncomparison"),
-  rel_widths = c(0.7, 0.5, 0.5, rep(1, 5)),      # <- use the SAME rel_widths you used for each row
+  labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues", 
+             "4. Observed\nbaseline effect", "5. Kelly–Price\nadjusted", "6. Blomqvist\nadjusted", "7. Moments\nadjusted", "8. Slope\ncomparison"),
+  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),      # <- use the SAME rel_widths you used for each row
   base_size = 10
+)
+
+footer <- make_column_header(
+  labels = c("", " timepoint", " timepoint", "initial", "initial", "initial", "initial", " method"),
+  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),
+  base_size = 8, face = "plain", vjust = -0.25
 )
 
 fig1 <- cowplot::plot_grid(
   header,
   p1, p2, p4, p5,              # your four 7-panel rows
-  labels = c("", "A", "B", "C", "D"),
+  footer,
+  labels = c("", "A", "B", "C", "D", ""),
   ncol = 1,
-  rel_heights = c(0.25, 1, 1, 1, 1)  # give the header some breathing room
+  rel_heights = c(0.25, 1, 1, 1, 1, 0.02)  # give the header some breathing room
 )
 fig1
 
@@ -1212,9 +1155,9 @@ facet_labeller <- function(labels) {
 
   if ("v_ind" %in% names(labels)) {
     v <- to_num(labels$v_ind)
-    v_cat <- ifelse(v <= 0.05, "Very low",
-             ifelse(v <= 1, "Moderate",
-             ifelse(v <= 10, "High", "Extreme")))
+    v_cat <- ifelse(v <= 0.05, "Minimal",
+             ifelse(v <= 1, "Substantial",
+             ifelse(v <= 10, "Extreme", "Extreme")))
     labels$v_ind <- paste0(v_cat, " (", fmt(v / v_pop), ")")
   }
 
@@ -1240,7 +1183,7 @@ ggplot(results_long, aes(
       obs_bias_mean = "Observed",
       blomq_bias_mean = "Blomqvist",
       kp_bias_mean = "Kelly-Price",
-      mom_bias_mean = "Moment"
+      mom_bias_mean = "Moments"
     )
   ) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -1301,6 +1244,7 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
     labels = c(
       b_obs_mean = "Observed",
       b_blomq_mean = "Blomqvist",
+      b_mom_mean = "Moments",
       b_kp_mean = "Kelly-Price"
     )
   ) +
@@ -1315,8 +1259,11 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
                         name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL)
   ) +
-  labs(x = "True slope", y = "Estimated slope") +
+  labs(x = "True slope", y = "Estimated slope", fill = "Method") +
   coord_fixed(xlim = c(-0.9, 0.9), ylim = c(-0.9, 0.9), expand = 0)
+
+ggsave(filename = "fig2alt.png", width = 160, height = 120, units = "mm", bg = "white")
+
 ```
 
 * Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
@@ -1422,12 +1369,34 @@ pdam_blomqvist_boot <- boot::boot(
 )
 pdam_b_blomq_adj_confint_boot <- stats::quantile(pdam_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
-# --- 5) Slopes tibble ---
+# --- 5) Method of moments (point + bootstrap CI) ---
+pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
+
+  # pseudo-exact y’ (used only for plotting panel, not for CI)
+  pdam <- pdam %>%
+    dplyr::mutate(
+      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_change_obs, pdam_b_mom_adj)
+    )
+
+  set.seed(200)
+  pdam_mom_boot <- boot::boot(
+    data = pdam,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      b_i <- moment.nohet.safe(di$log_init_obs, di$log_final_obs)
+    },
+    R = 2000
+  )
+  pdam_b_mom_adj_confint_boot <- stats::quantile(pdam_mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
+
+
+# --- 6) Slopes tibble ---
 pdam_slopes_tbl <- tibble::tibble(
-  method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
-  estimate = c(pdam_b_obs, pdam_b_kp_adj, pdam_b_blomq_adj),
-  ci_lower = c(pdam_b_obs_confint_boot[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj_confint_boot[1]),
-  ci_upper = c(pdam_b_obs_confint_boot[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj_confint_boot[2])
+  method   = factor(c("Obs.", "K.–P.", "Blom.", "Mom."), levels = c("Obs.", "K.–P.", "Blom.", "Mom.")),
+  estimate = c(pdam_b_obs, pdam_b_kp_adj, pdam_b_blomq_adj, pdam_b_mom_adj),
+  ci_lower = c(pdam_b_obs_confint_boot[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj_confint_boot[1], pdam_b_mom_adj_confint_boot[1]),
+  ci_upper = c(pdam_b_obs_confint_boot[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj_confint_boot[2], pdam_b_mom_adj_confint_boot[2])
 )
 
 # --- 6) Axis ranges for plots ---
@@ -1437,11 +1406,11 @@ pdam_change <- range(pdam$log_change_obs, na.rm = TRUE)
 pdam_theta <- sd(pdam$log_final_obs) / sd(pdam$log_init_obs)
 
 pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) + 
-  scale_y_continuous(limits = c(-4.1, -0.9)) +
+  scale_y_continuous(limits = c(-4.1, -0.5)) +
   scale_x_continuous(breaks = c(1, 2), 
                        labels = c("initial", "final"),
                        expand = expansion(mult = c(0.15, 0.2))) +
-    labs(title = NULL, x = "timepoint", y = "log S/H") +
+    labs(title = NULL, x = NULL, y = "log S/H") +
     ggplot2::theme_minimal(base_size = 8) +
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 1))) +
@@ -1466,8 +1435,8 @@ pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) 
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(-3.2, -1.0), 
-                    ylim = c(pdam_change[1], pdam_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+                    ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1476,8 +1445,8 @@ pdam_kp_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_kp_adj)) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1486,8 +1455,18 @@ pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj))
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    labs(title = NULL, x = NULL, y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
+pdam_mom_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_mom_adj)) +
+    geom_point(alpha = 0.2) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    geom_smooth(method = "lm", se = FALSE) +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1495,11 +1474,13 @@ pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
-    labs(title = NULL, x = "method", y = "slope") +
+    labs(title = NULL, x = NULL, y = "slope") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = 0)))
-
+          axis.title.y = element_text(margin = margin(r = 0)),
+          axis.text.x = element_text(angle = 45), margin = margin(0,0,0,0,"mm")) +
+  coord_cartesian(ylim = c(-1.2, 0.2))
+pdam_slopes_plot
 
 
 
@@ -1519,8 +1500,10 @@ pdam_plots <- cowplot::plot_grid(
     line7 = sprintf("s[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
   ),
   pdam_chiolero_plot, pdam_initchange_plot,
-  pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, 
-  nrow = 1, align = "h")
+  pdam_kp_plot, pdam_blomq_plot, pdam_mom_plot, pdam_slopes_plot, 
+  nrow = 1, align = "h",
+  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1))
+pdam_plots
 
 # Something from Tu and Gilthorpe
 b_i <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[2]
@@ -1628,12 +1611,33 @@ mill_blomqvist_boot <- boot::boot(
 )
 mill_b_blomq_adj_confint_boot <- stats::quantile(mill_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
+# --- 5) Method of moments (point + bootstrap CI) ---
+mill_b_mom_adj <- moment.nohet.safe(mill$log_init_obs, mill$log_final_obs)
+
+  # pseudo-exact y’ (used only for plotting panel, not for CI)
+  mill <- mill %>%
+    dplyr::mutate(
+      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_change_obs, mill_b_mom_adj)
+    )
+
+  set.seed(200)
+  mill_mom_boot <- boot::boot(
+    data = mill,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      b_i <- moment.nohet.safe(di$log_init_obs, di$log_final_obs)
+    },
+    R = 2000
+  )
+  mill_b_mom_adj_confint_boot <- stats::quantile(mill_mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
+
 # --- 5) Slopes tibble ---
 mill_slopes_tbl <- tibble::tibble(
-  method   = factor(c("Obs", "K-P", "Blomq"), levels = c("Obs", "K-P", "Blomq")),
-  estimate = c(mill_b_obs, mill_b_kp_adj, mill_b_blomq_adj),
-  ci_lower = c(mill_b_obs_confint_boot[1], mill_b_kp_adj_confint_boot[1], mill_b_blomq_adj_confint_boot[1]),
-  ci_upper = c(mill_b_obs_confint_boot[2], mill_b_kp_adj_confint_boot[2], mill_b_blomq_adj_confint_boot[2])
+  method   = factor(c("Obs.", "K.–P.", "Blom.", "Mom."), levels = c("Obs.", "K.–P.", "Blom.", "Mom.")),
+  estimate = c(mill_b_obs, mill_b_kp_adj, mill_b_blomq_adj, mill_b_mom_adj),
+  ci_lower = c(mill_b_obs_confint_boot[1], mill_b_kp_adj_confint_boot[1], mill_b_blomq_adj_confint_boot[1], mill_b_mom_adj_confint_boot[1]),
+  ci_upper = c(mill_b_obs_confint_boot[2], mill_b_kp_adj_confint_boot[2], mill_b_blomq_adj_confint_boot[2], mill_b_mom_adj_confint_boot[2])
 )
 
 # --- 6) Axis ranges for plots ---
@@ -1643,11 +1647,11 @@ mill_change <- range(mill$log_change_obs, na.rm = TRUE)
 mill_theta <- sd(mill$log_final_obs) / sd(mill$log_init_obs)
 
 mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) + 
-  scale_y_continuous(limits = c(-0.5, 5.1)) +
+  scale_y_continuous(limits = c(-0.5, 6)) +
   scale_x_continuous(breaks = c(1, 2), 
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
-    labs(title = NULL, x = "timepoint", y = "log size") +
+    labs(title = NULL, x = NULL, y = "log size (cm)") +
     ggplot2::theme_minimal(base_size = 8) +
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 1))) +
@@ -1672,7 +1676,7 @@ mill_initchange_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_obs)) 
                      label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1682,7 +1686,7 @@ mill_kp_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_kp_adj)) +
                      label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1692,7 +1696,17 @@ mill_blomq_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_blomq_adj))
                      label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
-    labs(title = NULL, x = "initial", y = "change") +
+    labs(title = NULL, x = NULL, y = "change") +
+    ggplot2::theme_minimal(base_size = 8)+
+    theme(plot.margin = margin(1,0,1,0),
+          axis.title.y = element_text(margin = margin(r = 0)))
+mill_mom_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_mom_adj)) +
+    geom_point(alpha = 0.2) +
+    stat_cor(aes(label = ..p.label..), size = 2,
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    geom_smooth(method = "lm", se = FALSE) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    labs(title = NULL, x = NULL, y = "change") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
@@ -1700,10 +1714,11 @@ mill_slopes_plot <- ggplot(mill_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
-    labs(title = NULL, x = "method", y = "slope") +
+    labs(title = NULL, x = NULL, y = "slope") +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
-          axis.title.y = element_text(margin = margin(r = 0)))
+          axis.title.y = element_text(margin = margin(r = 0)),
+          axis.text.x = element_text(angle = 45, margin = margin(0,0,0,0,"mm")))
 
 #cowplot::plot_grid(mill_chiolero_plot, mill_initfinal_plot, NULL, NULL, mill_initchange_plot, 
  #                  mill_kp_plot, mill_blomq_plot, mill_slopes_plot, nrow = 2, align = "hv")
@@ -1719,26 +1734,29 @@ mill_plots <- cowplot::plot_grid(
     line7 = sprintf("s[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
   ),
   mill_chiolero_plot, mill_initchange_plot,
-  mill_kp_plot, mill_blomq_plot, mill_slopes_plot, 
-  nrow = 1, align = "h")
+  mill_kp_plot, mill_blomq_plot, mill_mom_plot, mill_slopes_plot, 
+  nrow = 1, align = "h",
+  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1))
 
-
+mill_plots
 
 ```
 
+#Fig3
 ```{r}
 # Make a column-label header row (7 labels by default)
 make_column_header <- function(
   labels = paste("Col", 1:5),
   rel_widths = rep(1, length(labels)),
   base_size = 10,
-  face = "bold"
+  face = "bold",
+  hjust = 0.5, vjust = 0.5
 ) {
   heads <- lapply(labels, function(lab) {
     cowplot::ggdraw() +
       cowplot::draw_label(
         lab, x = 0.6, y = 0.5,
-        hjust = 0.5, vjust = 0.5,
+        hjust = hjust, vjust = vjust,
         fontface = face, size = base_size
       )
   })
@@ -1748,15 +1766,21 @@ make_column_header <- function(
 # EXAMPLE: combine header + your 4 rows
 # (Set rel_widths to match how you built each row of 7 panels)
 header <- make_column_header(
-  labels = c("1. Dataset       ", "2. Observed\nvalues", "3. Observed", "4. Kelly-Price", "5. Blomqvist", "6. Slope\ncomparison"),
-  rel_widths = rep(1, 6),      # <- use the SAME rel_widths you used for each row
+  labels = c("1. Dataset       \n ", "2. Observed\nvalues", "3. Observed\nbaseline effect", "4. Kelly-Price\nadjusted", 
+             "5. Blomqvist\nadjusted", "6. Moments\nadjusted", "7. Slope\ncomparison"),
+  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),      # <- use the SAME rel_widths you used for each row
   base_size = 10
+)
+footer <- make_column_header(
+  labels = c("", "timepoint", "initial", "initial", "initial", "initial", " method"),
+  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),
+  base_size = 8, face = "plain", vjust = -0.2
 )
 
 fig3 <- cowplot::plot_grid(
-  header, pdam_plots, mill_plots, align = "hv", 
-  ncol = 1, labels = c("", "A", "B"),
-  rel_heights = c(0.25, 1, 1)  # give the header some breathing room
+  header, pdam_plots, mill_plots, footer, align = "hv", 
+  ncol = 1, labels = c("", "A", "B", ""),
+  rel_heights = c(0.25, 1, 1, 0.02)  # give the header some breathing room
 )
 fig3
 
