@@ -1,5 +1,9 @@
 library(tidyverse)
 
+# ------------------------------------------------------------------------
+# Calculate measurement error as instrument error based on qPCR replicates
+# ------------------------------------------------------------------------
+
 # Import all CT data
 ct <- readxl::read_xlsx("pdam_qpcr_data_20250514.xlsx") %>%
   janitor::clean_names() %>%
@@ -20,7 +24,6 @@ n_distinct(final$colony)
 ct <- ct %>% right_join(final, by = "colony")
 n_distinct(ct$colony)
 
-
 # Adjust Ct values
 ct <- ct %>%
   mutate(adj_ct = case_when(
@@ -28,7 +31,6 @@ ct <- ct %>%
     target_name == "C"  ~ ct - 2.6789,
     target_name == "D"  ~ ct
   ))
-
 
 # Calculate SH from ONE technical replicate on each sample
 summ <- ct %>%
@@ -59,65 +61,43 @@ var_diffs_1rep <- summ %>%
 v_err <- var_diffs_1rep / 2 / 2
 v_err
 
-# Calculate SH from AVERAGED technical replicates (how the analysis is actually done)
-summ2 <- ct %>%
-  group_by(colony, sym, date, target_name) %>%
-  summarize(mean_ct = mean(adj_ct)) %>%
-  pivot_wider(names_from = target_name, values_from = mean_ct) %>%
-  mutate(D.Pd = (2^(Pd - D))*2*3*1.21,
-         C.Pd = (2^(Pd - C))/9*2*3*1.21,
-         SH = sum(D.Pd, C.Pd, na.rm = T)) %>%
-  mutate(across(c(C.Pd, D.Pd), ~replace_na(., 0)),
-         dom = if_else(C.Pd > D.Pd, "C", "D")) %>%
-  group_by(colony, sym, date) %>%
-  summarize(totSH = sum(SH, na.rm = T)) %>%
-  mutate(logSH = log(totSH)) %>%
-  filter(is.finite(logSH)) %>%
-  ungroup()
 
-# estimate total trait variance v_tot (for initial time point, 0609). (# # have to control for symbiont first...)
-summ3 <- summ2 %>%
-  ungroup() %>%
-  filter(date == "0609") %>%
-  group_by(sym) %>%
-  mutate(mean_logSH = mean(logSH),
-         resid = logSH - mean(logSH)) %>%
-  ungroup() %>%
-  mutate(adj_logSH = mean(logSH) + resid)
+# ------------------------------------------------------------------------
+# Calculate measurement error including short-term fluctuations using
+# timeseries where each colony sampled 3x (Feb., Apr., Jun.)
+# ------------------------------------------------------------------------
 
-v_tot <- var(summ3$adj_logSH)
+# Load warming dataset
+pdam_warm <- read_csv("PdamRwarming.csv") %>%
+  mutate(colony = factor(colony),
+         logtotal = log(total))
+# Get only colonies included in bleaching study
+pdam_warm <- pdam_warm %>% filter(colony %in% final$colony)
 
-# estimate v_pop as v_tot - v_err
-v_pop <- v_tot - v_err
+# Fit colony-specific linear trends over time, allowing each colony to have
+# true heterogeneity in change (i.e., it's own linear trend over time), and then
+# calculate residual variance
+# (Time is numeric: 1 = Feb, 2 = Apr, 3 = Jun)
 
-# v_err relative to v_pop
-v_err_rel <- v_err / v_pop
+ggplot(pdam_warm, aes(x = time, y = logtotal)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~colony)
 
+# Fit model
+mod <- lm(logtotal ~ time * colony, data = pdam_warm)
+res <- augment(mod)
+res %>% print(n = nrow(.))
+
+# Get variance of residuals
+var(residuals(mod))
+
+#hist(residuals(mod))
 
 
 
 
-library(boot)
 
-# Your difference vector from technical replicates
-diffs <- summ %>%
-  group_by(colony, date) %>%
-  summarize(diff = diff(logSH)) %>%
-  pull(diff)
 
-# Bootstrap function: calculate v_err from diff vector
-boot_fun <- function(data, indices) {
-  v_diff <- var(data[indices])
-  return(v_diff / 4)  # divide by 4 as you do in your code
-}
 
-# Bootstrap 1000 replicates
-set.seed(123)
-boot_out <- boot(diffs, statistic = boot_fun, R = 1000)
 
-# Get percentile CI
-ci <- boot.ci(boot_out, type = "perc")
-v_err_lower <- ci$percent[4]
-v_err_upper <- ci$percent[5]
-v_err_lower_rel <- v_err_lower / (v_tot - v_err_lower)
-v_err_upper_rel <- v_err_upper / (v_tot - v_err_upper)
