@@ -1184,10 +1184,6 @@ pdam <- pdam %>%
 # Get pdam variances
 # Total variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
-var(pdam$log_init_obs, na.rm = TRUE)
-var(pdam$log_init_raw, na.rm = TRUE)
-
-pdam
 
 # Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
 pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
@@ -1233,21 +1229,16 @@ pdam_kp_boot <- boot::boot(
 pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
 # --- 4) Blomqvist (point + bootstrap CI) ---
-pdam_k <- pdam_v_err_abs / pdam_var_x_abs
-pdam_k2 <- pdam_v_err_abs2 / pdam_var_x_abs
-pdam_k2 <- 0.497 # 1 - repeatability from warming study
+pdam_k <- 0.497  # 1 - repeatability from warming study
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
-pdam_b_blomq_adj2 <- blomqvist_b(pdam_b_obs, pdam_k2)
 # Calculate variance in pdam individual change (use blomqvist-adjusted slope)
 pdam_v_ind <- var(pdam$log_change_obs) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
-pdam_v_ind2 <- var(pdam$log_change_obs) - (2 * pdam_v_err_abs2) - (pdam_b_blomq_adj2^2 * pdam_v_pop2)
 
 # pseudo-exact y’ (used only for plotting panel, not for CI)
 pdam <- pdam %>%
   dplyr::mutate(
     log_change_kp_adj    = pdam_kp_full$adj.growth,
-    log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_change_obs, pdam_b_blomq_adj),
-    log_change_blomq_adj2 = blomqvist_pseudo_exact(log_init_obs, log_change_obs, pdam_b_blomq_adj2)
+    log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_change_obs, pdam_b_blomq_adj)
   )
 
 set.seed(200)
@@ -1262,18 +1253,6 @@ pdam_blomqvist_boot <- boot::boot(
   R = 2000
 )
 pdam_b_blomq_adj_confint_boot <- stats::quantile(pdam_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
-
-pdam_blomqvist2_boot <- boot::boot(
-  data = pdam,
-  statistic = function(d, i) {
-    di <- d[i, , drop = FALSE]
-    b_i <- coef(lm(log_change_obs ~ log_init_obs, data = di))[2]
-    #k_i <- pdam_v_err_abs2 / var(di$log_init_obs)
-    blomqvist_b(b_i, pdam_k2)
-  },
-  R = 2000
-)
-pdam_b_blomq_adj2_confint_boot <- stats::quantile(pdam_blomqvist2_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
 # --- 5) Method of moments (point + bootstrap CI) ---
 pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
@@ -1300,9 +1279,9 @@ pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
 # --- 6) Slopes tibble ---
 pdam_slopes_tbl <- tibble::tibble(
   method   = factor(c("Obs.", "K.–P.", "Blom.", "Mom."), levels = c("Obs.", "K.–P.", "Blom.", "Mom.")),
-  estimate = c(pdam_b_obs, pdam_b_kp_adj, pdam_b_blomq_adj2, pdam_b_mom_adj),
-  ci_lower = c(pdam_b_obs_confint_boot[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj2_confint_boot[1], pdam_b_mom_adj_confint_boot[1]),
-  ci_upper = c(pdam_b_obs_confint_boot[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj2_confint_boot[2], pdam_b_mom_adj_confint_boot[2])
+  estimate = c(pdam_b_obs, pdam_b_kp_adj, pdam_b_blomq_adj, pdam_b_mom_adj),
+  ci_lower = c(pdam_b_obs_confint_boot[1], pdam_b_kp_adj_confint_boot[1], pdam_b_blomq_adj_confint_boot[1], pdam_b_mom_adj_confint_boot[1]),
+  ci_upper = c(pdam_b_obs_confint_boot[2], pdam_b_kp_adj_confint_boot[2], pdam_b_blomq_adj_confint_boot[2], pdam_b_mom_adj_confint_boot[2])
 )
 
 # --- 6) Axis ranges for plots ---
@@ -1356,7 +1335,7 @@ pdam_kp_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_kp_adj)) +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
-pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj2)) +
+pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
