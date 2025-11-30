@@ -1185,7 +1185,7 @@ pdam <- pdam %>%
 # Total variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
-# Blomqvist's k (1 - R) from time-series study (see pdam_variance.R)
+# Blomqvist's k (1 - R) from time-series study (see "pdam_variance.R")
 pdam_k <- 0.4972658
 
 # Measurement error variance
@@ -1423,7 +1423,7 @@ mill <- mill %>%
 
 # Variance in initial observed trait values
 mill_var_x_abs <- var(mill$log_init_obs, na.rm = TRUE)
-# Measurement error variance (from qPCR technical replicates; see mill_variance.R)
+# Measurement error variance
 mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "acer_variance.R")
 
 # Variance in mill true initial trait values (subtract measurement error variance)
