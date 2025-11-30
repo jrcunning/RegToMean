@@ -1,7 +1,7 @@
 library(tidyverse)
 
 # ------------------------------------------------------------------------
-# Calculate measurement error as instrument error based on qPCR replicates
+# Calculate instrument error based on qPCR replicates
 # ------------------------------------------------------------------------
 
 # Import all CT data
@@ -63,12 +63,12 @@ v_err
 
 
 # ------------------------------------------------------------------------
-# Calculate measurement error including short-term fluctuations using
-# timeseries where each colony sampled 3x (Feb., Apr., Jun.)
+# Calculate broad measurement error including short-term fluctuations using
+# time-series where each colony sampled 3x (Feb., Apr., Jun.)
 # ------------------------------------------------------------------------
 
 # Load warming dataset
-pdam_warm <- read_csv("PdamRwarming.csv") %>%
+pdam_warm <- read_csv("data/PdamRwarming.csv") %>%
   mutate(colony = factor(colony),
          logtotal = log(total))
 # Get only colonies included in bleaching study
@@ -87,12 +87,49 @@ ggplot(pdam_warm, aes(x = time, y = logtotal)) +
 # Fit model
 mod <- lm(logtotal ~ time * colony, data = pdam_warm)
 res <- augment(mod)
-res %>% print(n = nrow(.))
+#res %>% print(n = nrow(.))
 
 # Get variance of residuals
 var(residuals(mod))
+sum(residuals(mod)^2) / (nrow(pdam_warm)-1)
+
+sigma2_err_pdam <- sum(residuals(mod)^2) / df.residual(mod)
+sigma2_err_pdam
+
+anova(mod)
 
 #hist(residuals(mod))
+
+
+
+# Adjustment for bleaching study change-baseline slope
+pdam_bleach <- read_csv("data/PdamRbleaching.csv") %>%
+  mutate(
+    log_init_raw  = log(juntotal),
+    log_final_raw = log(augtotal),
+    log_change_raw = log_final_raw - log_init_raw      # change variable for RTM regression
+  )
+
+pdam_var_init_raw <- var(pdam_bleach$log_init_raw, na.rm = TRUE)
+pdam_var_init_raw
+
+k_pdam <- sigma2_err_pdam / pdam_var_init_raw
+
+pdam_fit_raw_model <- lm(log_change_raw ~ log_init_raw + sym, data = pdam_bleach)
+summary(pdam_fit_raw_model)
+
+# Extract change ~ initial slope (unadjusted for RTM)
+b_obs_pdam_raw <- coef(pdam_fit_raw_model)[["log_init_raw"]]
+b_obs_pdam_raw
+
+k_pdam_raw <- sigma2_err_pdam / pdam_var_init_raw
+k_pdam_raw
+
+b_pdam_corrected <- (b_obs_pdam_raw + k_pdam_raw) / (1 - k_pdam_raw)
+b_pdam_corrected
+
+
+# Repeatability
 
 
 
