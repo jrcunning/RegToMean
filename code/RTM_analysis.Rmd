@@ -1151,7 +1151,6 @@ ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm"
 * Kelly-Price adjustments are highly susceptible to spurious positive overestimation, especially when the true relationship is negative, and as v_ind increases. 
 * Blomqvist adjustments **consistently recover the accurate true relationship across all datasets.**
 
-
 # Dataset 1: *P. damicornis* symbiont changes
 
 from Cunning and Baker 2013
@@ -1164,7 +1163,6 @@ pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
          log_final_raw = log(augtotal),
          log_change_raw = log_final_raw - log_init_raw)
-
 
 # Remove symbiont effect
 ## Calculate grand mean
@@ -1186,7 +1184,7 @@ pdam <- pdam %>%
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
 # Blomqvist's k (1 - R) from time-series study (see "pdam_variance.R")
-pdam_k <- 0.4972658
+pdam_k <- 0.4927648 # <- 1 - Repeatability from warming dataset rptR
 
 # Measurement error variance
 pdam_v_err_abs  <- pdam_k * pdam_var_x_abs
@@ -1228,6 +1226,7 @@ pdam_kp_boot <- boot::boot(
   R = 2000
 )
 pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
 
 # --- 4) Blomqvist (point + bootstrap CI) ---
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
@@ -1273,8 +1272,6 @@ pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
     R = 2000
   )
   pdam_b_mom_adj_confint_boot <- stats::quantile(pdam_mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
-
-
 
 # --- 6) Slopes tibble ---
 pdam_slopes_tbl <- tibble::tibble(
@@ -1367,12 +1364,6 @@ pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
   coord_cartesian(ylim = c(-1.2, 0.2))
 
 
-
-
-
-#cowplot::plot_grid(pdam_chiolero_plot, pdam_initfinal_plot, NULL, NULL, pdam_initchange_plot, 
- #                  pdam_kp_plot, pdam_blomq_plot, pdam_slopes_plot, nrow = 2, align = "hv")
-
 pdam_plots <- cowplot::plot_grid(
   text_panel_math(
     line1 = "bold('Bleaching in')",
@@ -1423,6 +1414,7 @@ mill <- mill %>%
 
 # Variance in initial observed trait values
 mill_var_x_abs <- var(mill$log_init_obs, na.rm = TRUE)
+
 # Measurement error variance
 mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "acer_variance.R")
 
