@@ -1185,13 +1185,14 @@ pdam <- pdam %>%
 # Total variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
-# Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
-pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
-pdam_v_err_abs2 <- 0.06804263    # including fluctuation
+# Blomqvist's k (1 - R) from time-series study (see pdam_variance.R)
+pdam_k <- 0.4972658
+
+# Measurement error variance
+pdam_v_err_abs  <- pdam_k * pdam_var_x_abs
 
 # Variance in pdam true initial trait values (subtract measurement error variance)
-pdam_v_pop <- pdam_var_x_abs - pdam_v_err_abs
-pdam_v_pop2 <- pdam_var_x_abs - pdam_v_err_abs2
+pdam_v_pop  <- (1 - pdam_k) * pdam_var_x_abs
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
@@ -1229,7 +1230,6 @@ pdam_kp_boot <- boot::boot(
 pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
 # --- 4) Blomqvist (point + bootstrap CI) ---
-pdam_k <- 0.497  # 1 - repeatability from warming study
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
 # Calculate variance in pdam individual change (use blomqvist-adjusted slope)
 pdam_v_ind <- var(pdam$log_change_obs) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
@@ -1379,22 +1379,15 @@ pdam_plots <- cowplot::plot_grid(
     line2 = "bolditalic(Pocillopora)",
     line3 = "bolditalic(damicornis)",
     line4 = sprintf("n==bold(%s)", formatC(nrow(pdam), format = "fg")),
-    line5 = sprintf("s[X]^2==bold(%s)", formatC(pdam_var_x_abs, format = "fg", digits = 3)),
-    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind2, format = "fg", digits = 3)),
-    line7 = sprintf("s[err]^2==bold(%s)", formatC(pdam_v_err_abs2, format = "fg", digits = 3))
+    line5 = sprintf("s[X]^2==bold(%s)", formatC(pdam_v_pop, format = "fg", digits = 3)),
+    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
+    line7 = sprintf("s[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
   ),
   pdam_chiolero_plot, pdam_initchange_plot,
   pdam_kp_plot, pdam_blomq_plot, pdam_mom_plot, pdam_slopes_plot, 
   nrow = 1, align = "h",
   rel_widths = c(1, 0.6, 1, 1, 1, 1, 1))
 pdam_plots
-
-# Something from Tu and Gilthorpe
-b_i <- coef(lm(log_change_obs ~ log_init_obs, data = pdam))[2]
-blomqvist_b(b_i, pdam_k)
-
-b_f <- coef(lm(-log_change_obs ~ log_final_obs, data = pdam))[2]
-blomqvist_b(b_f, pdam_k)
 ```
 
 # Dataset 2: *A. cervicornis* growth
@@ -1431,7 +1424,7 @@ mill <- mill %>%
 # Variance in initial observed trait values
 mill_var_x_abs <- var(mill$log_init_obs, na.rm = TRUE)
 # Measurement error variance (from qPCR technical replicates; see mill_variance.R)
-mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "RegressionToMean_forGithub.R")
+mill_v_err_abs <- 0.01301945     # on trait scale (logTLE; see "acer_variance.R")
 
 # Variance in mill true initial trait values (subtract measurement error variance)
 mill_v_pop <- mill_var_x_abs - mill_v_err_abs
@@ -1614,7 +1607,7 @@ mill_plots <- cowplot::plot_grid(
     line2 = "bolditalic(Acropora)",
     line3 = "bolditalic(cervicornis)",
     line4 = sprintf("n==bold(%s)", formatC(nrow(mill), format = "fg")),
-    line5 = sprintf("s[X]^2==bold(%s)", formatC(mill_var_x_abs, format = "fg", digits = 3)),
+    line5 = sprintf("s[X]^2==bold(%s)", formatC(mill_v_pop, format = "fg", digits = 3)),
     line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
     line7 = sprintf("s[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
   ),
