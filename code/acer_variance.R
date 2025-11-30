@@ -12,5 +12,6 @@ millsumm <- as.tibble(dat2) %>%
          diff = T0_TLE - T0_FieldTLE,
          subj = factor(row_number()))
 
-var(millsumm$diff) / 2
+var(millsumm$diff) / 2   # 0.01301945
+# use as numerator to compute Blomqvist k
 

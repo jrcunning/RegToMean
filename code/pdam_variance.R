@@ -1,34 +1,32 @@
 library(tidyverse)
+library(rptR)
 
-# ------------------------------------------------------------------------
-# Calculate broad measurement error including short-term fluctuations using
-# time-series where each colony sampled 3x (Feb., Apr., Jun.)
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Calculate broad measurement error based on repeatability of short-term 
+# fluctuations from time-series where each colony sampled 3x (Feb., Apr., Jun.)
+# ------------------------------------------------------------------------------
 
-# Load warming dataset
+# Load time-series dataset
 pdam_warm <- read_csv("data/PdamRwarming.csv") %>%
   mutate(colony = factor(colony),
          logtotal = log(total))
 # Get only colonies included in bleaching study
 pdam_warm <- pdam_warm %>% filter(colony %in% final$colony)
 
+# Calculate Repeatability (R) and k (1 - R)
+res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
+                   data = pdam_warm,
+                   adjusted = TRUE, ratio = TRUE)
+1 - summary(res)$rpt[[1]]$R     # 1 - R = Blomqvist's k = 0.4972658
 
-# Repeatability
-library(rptR)
+# Confirm: Recalculate based on variances
 res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
                    data = pdam_warm,
                    adjusted = TRUE, ratio = FALSE)
-res
 
 V_between <- summary(res)$rpt[[1]]$R
-
 V_within <- summary(res)$rpt[[2]]$R
-
-V_total <- V_between + V_within
-
-R_rpt <- V_between / V_total      # repeatability
-k_rpt <- V_within / V_total       # Blomqvist-equivalent broad-k  (~ 1 − R)
-k_rpt    # 0.497 -- higher than k from fixed effects model (0.37) because random colony slopes are shrunk toward global mean 
-         # and so more of the variance ends up in residuals rather than 
-         # soaked up by colony-specific slopes in the fixed effects model
+R_rpt <- V_between / (V_between + V_within)      # repeatability
+k_rpt <- V_within / (V_between + V_within)       # Blomqvist k  (= 1 − R)
+k_rpt    # 0.4972658
 
