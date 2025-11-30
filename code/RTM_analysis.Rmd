@@ -1163,7 +1163,7 @@ pdam0 <- read_csv("data/PdamRbleaching.csv")
 pdam <- pdam0 %>%
   mutate(log_init_raw = log(juntotal),
          log_final_raw = log(augtotal),
-         log_change = log_final_raw - log_init_raw)
+         log_change_raw = log_final_raw - log_init_raw)
 
 
 # Remove symbiont effect
@@ -1179,11 +1179,15 @@ pdam <- pdam %>%
   mutate(log_init_obs = grand_mean_init + group_resid_init,
          log_final_obs = grand_mean_final + group_resid_final,
          log_change_obs = log_final_obs - log_init_obs) %>%
-  select(colony, log_init_obs, log_final_obs, log_change_obs)
+  select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_init_raw, log_final_raw, log_change_raw)
 
 # Get pdam variances
 # Total variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
+var(pdam$log_init_obs, na.rm = TRUE)
+var(pdam$log_init_raw, na.rm = TRUE)
+
+pdam
 
 # Measurement error variance (from qPCR technical replicates; see pdam_variance.R)
 pdam_v_err_abs <- 0.0231325     # on trait scale (logSH)
@@ -1197,7 +1201,11 @@ pdam_v_pop2 <- pdam_var_x_abs - pdam_v_err_abs2
 ### Observed and adjusted relationships in *P. damicornis* study
 ```{r}
 # --- 2) Observed slope + CI ---
+#sym-adjusted in advance
 pdam_fit_obs <- lm(log_change_obs ~ log_init_obs, data = pdam)
+pdam_b_obs   <- coef(pdam_fit_obs)[2]
+#non-sym-adjusted
+pdam_fit_obs <- lm(log_change_raw ~ log_init_raw + sym, data = pdam)
 pdam_b_obs   <- coef(pdam_fit_obs)[2]
 pdam_b_obs_confint <- confint(pdam_fit_obs)[2, ]
 pdam_b_obs_boot <- boot::boot(
@@ -1230,7 +1238,7 @@ pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), n
 # --- 4) Blomqvist (point + bootstrap CI) ---
 pdam_k <- pdam_v_err_abs / pdam_var_x_abs
 pdam_k2 <- pdam_v_err_abs2 / pdam_var_x_abs
-pdam_k2 <- 0.497
+pdam_k2 <- 0.497 # 1 - repeatability from warming study
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
 pdam_b_blomq_adj2 <- blomqvist_b(pdam_b_obs, pdam_k2)
 # Calculate variance in pdam individual change (use blomqvist-adjusted slope)
@@ -1381,7 +1389,6 @@ pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
           axis.title.y = element_text(margin = margin(r = 0)),
           axis.text.x = element_text(angle = 45), margin = margin(0,0,0,0,"mm")) +
   coord_cartesian(ylim = c(-1.2, 0.2))
-pdam_slopes_plot
 
 
 
