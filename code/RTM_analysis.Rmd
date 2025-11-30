@@ -1179,7 +1179,7 @@ pdam <- pdam %>%
   mutate(log_init_obs = grand_mean_init + group_resid_init,
          log_final_obs = grand_mean_final + group_resid_final,
          log_change_obs = log_final_obs - log_init_obs) %>%
-  select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_init_raw, log_final_raw, log_change_raw)
+  select(colony, log_init_obs, log_final_obs, log_change_obs)
 
 # Get pdam variances
 # Total variance in initial observed trait values
@@ -1203,9 +1203,6 @@ pdam_v_pop2 <- pdam_var_x_abs - pdam_v_err_abs2
 # --- 2) Observed slope + CI ---
 #sym-adjusted in advance
 pdam_fit_obs <- lm(log_change_obs ~ log_init_obs, data = pdam)
-pdam_b_obs   <- coef(pdam_fit_obs)[2]
-#non-sym-adjusted
-pdam_fit_obs <- lm(log_change_raw ~ log_init_raw + sym, data = pdam)
 pdam_b_obs   <- coef(pdam_fit_obs)[2]
 pdam_b_obs_confint <- confint(pdam_fit_obs)[2, ]
 pdam_b_obs_boot <- boot::boot(
