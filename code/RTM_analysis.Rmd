@@ -1049,7 +1049,7 @@ ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm"
 
 # Dataset 1: *P. damicornis* symbiont changes
 
-from Cunning and Baker 2013
+from [Cunning and Baker 2013](https://doi.org/10.1038/nclimate1711)
 
 ### Import and tidy data
 ```{r pdam_import_tidy}
@@ -1293,7 +1293,7 @@ pdam_plots
 
 # Dataset 2: *A. cervicornis* growth
 
-from Million et al.
+from [Million et al. 2022](https://doi.org/10.1073/pnas.2203925119)
 
 ### Import and tidy data
 ```{r mill_import_tidy}
