@@ -15,8 +15,9 @@ A simulation and analysis project for evaluating regression-to-the-mean (RTM) ar
 | File | Purpose |
 |---|---|
 | `code/RTM_analysis.Rmd` | Core analysis notebook — simulations, RTM correction method evaluation, figure generation |
-| `code/RegressionToMean_forGithub.R` | Script for calculating measurement error for *A. cervicornis* case study |
+| `code/acer_variance.R` | Script for calculating measurement error for *A. cervicornis* case study |
 | `code/pdam_variance.R` | Script for calculating measurement error for *P. damicornis* case study |
+| `code/RTM_functions.R` | Functions for applying Blomqvist and method-of-moments estimators to two-timepoint baseline–change datasets
 
 ### Data
 | File | Description |
@@ -24,6 +25,7 @@ A simulation and analysis project for evaluating regression-to-the-mean (RTM) ar
 | `data/PdamRbleaching.csv` | Case study data for *P. damicornis* releationship between initial symbiont density and bleaching |
 | `data/PdamRwarming.csv` | Additional *P. damicornis* symbiont density timeseries data to compute repeatability |
 | `data/subMil1.csv` | Case study data for *A. cervicornis* relationship between initial size and growth |
+| `data/Acer3DMorphologyData.csv` | Additional *A. cervicornis* data with replicate baseline measurements to compute measurement error |
 
 ### Figures (generated outputs)
 | File | Description |
