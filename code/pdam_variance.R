@@ -12,20 +12,13 @@ pdam_warm <- read_csv("data/PdamRwarming.csv") %>%
          logtotal = log(total)) %>%
   select(colony, sym, time, date, total, logtotal)
 
-# # Get only colonies included in bleaching study
-pdam_bleach <- read_csv("data/PdamRbleaching.csv") %>%
-  mutate(colony = factor(colony)) %>%
-  select(colony, sym, jun = juntotal, aug = augtotal) %>%
-  pivot_longer(3:4, names_to = "date", values_to = "total") %>%
-  mutate(logtotal = log(total))
-
-# pdam_warm <- pdam_warm %>% filter(colony %in% pdam_bleach$colony)
-
 # Calculate Repeatability (R) and k (1 - R)
 res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
                    data = pdam_warm,
                    adjusted = TRUE, ratio = TRUE)
+summary(res)
 1 - summary(res)$rpt[[1]]$R     # 1 - R = Blomqvist's k = 0.4927648
+summary(res)$rpt[[2]]$R
 
 # Confirm: Recalculate based on variances instead of ratios
 res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
