@@ -1,7 +1,6 @@
 ---
-title: "Regression to the mean and the detection of true relationships between change and initial values"
-author: "Ross Cunning"
-date: "2025-09-05"
+title: "Analysis code for: Failure to distinguish between measurement error and variation in individual change leads to improper correction of regression-to-the-mean artifacts"
+date: "December 2025"
 output:
   html_document:
     toc: true
@@ -48,6 +47,7 @@ library(grid)
 library(boot)
 library(future)
 library(furrr)
+library(ggtext)
 ```
 
 ```{r functions, echo = FALSE}
@@ -207,7 +207,7 @@ chiolero_plot <- function(df, init_var, final_var,
       y2 = !!final_sym
     )
 
-  # Symmetric y-limits around 0 (optional; comment these 4 lines if you prefer data-driven)
+  # Symmetric y-limits around 0 
   rng <- range(c(d_plot$y1, d_plot$y2), na.rm = TRUE)
   m   <- max(abs(rng)); if (!is.finite(m) || m == 0) m <- 1
   major_y <- seq(-2 * ceiling(m/2), 2 * ceiling(m/2), by = 2)
@@ -233,15 +233,7 @@ chiolero_plot <- function(df, init_var, final_var,
 }
 
 
-
-
-
-
-
-
-
-
-
+# Custom plotting function for simulation results
 panel_plot_row7 <- function(plots) {
   
   p1 <- plots[[1]] +
@@ -331,8 +323,7 @@ panel_plot_row7 <- function(plots) {
 }
 
 
-library(ggtext)
-
+# Custom function to plot a panel of text
 text_panel_html <- function(line1,
                             line2 = NULL,
                             line3 = NULL,
@@ -533,7 +524,7 @@ run_simulation_scenario <- function(
     dplyr::summarise(max_abs = max(abs(dplyr::c_across(everything())), na.rm = TRUE)) %>%
     dplyr::pull(max_abs)
 
-  # --- 7) Plots (uses your existing helpers: chiolero_plot, annotated_panel_plot) ---
+  # --- 7) Plots chiolero_plot helper) ---
   p1 <- chiolero_plot(df1, log_init_true,  log_final_true) + ggtitle("True")
   p2 <- chiolero_plot(df1, log_init_obs,   log_final_obs)  + ggtitle("Observed") +
 annotate(
@@ -582,7 +573,7 @@ annotate(
 
   plots1 <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
 
-  # Optional: assemble your panel externally with annotated_panel_plot(plots1)
+  # Optional: assemble panel 
   list(
     data = df1,
     slopes = slopes_tbl,
@@ -594,55 +585,8 @@ annotate(
 s1.1_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
-#annotated_panel_plot(s1.1_results$plots)
-#p1 <- annotated_panel_plot2(s1.1_results$plots)
 p1 <- panel_plot_row7(s1.1_results$plots)
 p1
-
-
-s1.1_results$data$e_init[1:10]
-s1.1_results$data$e_final[1:10]
-s1.1_results$slopes
-
-rho <- cor.test(s1.1_results$data$log_init_obs, s1.1_results$data$log_final_obs)$estimate
-1 - rho
-rho2 <- 2 * rho * sd(s1.1_results$data$log_init_obs) * sd(s1.1_results$data$log_final_obs) / (var(s1.1_results$data$log_init_obs) + var(s1.1_results$data$log_final_obs))
-rho
-rho2
-s1.1_results$slopes$estimate[1] + (1 - rho2)
-
-#so b_kp = b_obs + (1 - rho2)
-coef(lm(s1.1_results$data$log_final_obs ~ s1.1_results$data$log_init_obs))[[2]]
-
-df <- s1.1_results$data
-b_obs <- s1.1_results$slopes$estimate[1]; b_obs
-bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
-r <- cor(df$log_final_obs, df$log_init_obs); r
-r2 <- 2*r*sd(df$log_final_obs)*sd(df$log_init_obs) / (var(df$log_final_obs) + var(df$log_init_obs))
-v <- sd(df$log_final_obs) / sd(df$log_init_obs); v
-r * v   # equivalent to bfi
-(1 - r * v) * -1  # equivalent to b_obs (* -1 because KP framed as m1-m2 instead of m2-m1)
-r * v - 1 # also equivalent ^^
-b_obs + (1 - r2)  # equivalent to b_kp_adj
-r2 - 1
-b_kp <- s1.1_results$slopes$estimate[2]; b_kp
-r * v - r2
-
-
-
-
-# Hayes
-# b_obs = -v_err/(v_pop + v_err)?
--v_err/(v_pop + v_err)
-b_obs
-
-
-
-
-# test variance of blomq-adjusted points
-var(s1.1_results$data$log_change_obs)
-var(s1.1_results$data$log_change_kp_adj)
-var(s1.1_results$data$log_change_blomq_adj)
 ```
 
 * Confirms spurious negative relationship between observed change and initial is due to measurement error 
@@ -663,36 +607,8 @@ s1.2_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s1.2_results$plots)
-#p2 <- annotated_panel_plot2(s1.2_results$plots)
 p2 <- panel_plot_row7(s1.2_results$plots)
 p2
-
-
-s1.2_results$slopes
-
-rho <- cor.test(s1.2_results$data$log_init_obs, s1.2_results$data$log_final_obs)$estimate
-rho2 <- 2 * rho * sd(s1.2_results$data$log_init_obs) * sd(s1.2_results$data$log_final_obs) / (var(s1.2_results$data$log_init_obs) + var(s1.2_results$data$log_final_obs))
-rho
-rho2
-s1.2_results$slopes$estimate[1] + (1 - rho)
-
-#so b_kp = b_obs + (1 - rho)
-coef(lm(s1.2_results$data$log_final_obs ~ s1.2_results$data$log_init_obs))[[2]]
-
-df <- s1.2_results$data
-b_obs <- s1.2_results$slopes$estimate[1]; b_obs
-bfi <- coef(lm(log_final_obs ~ log_init_obs, data = df))[[2]]; bfi
-r <- cor(df$log_final_obs, df$log_init_obs); r
-r2 <- 2*r*sd(df$log_final_obs)*sd(df$log_init_obs) / (var(df$log_final_obs) + var(df$log_init_obs))
-v <- sd(df$log_final_obs) / sd(df$log_init_obs); v
-r * v   # equivalent to bfi
-(1 - r * v) * -1  # equivalent to b_obs (* -1 because KP framed as m1-m2 instead of m2-m1)
-r * v - 1
-b_obs + (1 - r)  # equivalent to b_kp_adj
-b_kp <- s1.2_results$slopes$estimate[2]; b_kp
-
-
 ```
 
 * Confirms that no spurious relationship arises when changes are driven by individual variance instead of measurement error (there is no regression to the mean when measurement error is minimal).
@@ -705,7 +621,7 @@ b_kp <- s1.2_results$slopes$estimate[2]; b_kp
 # Set variances
 v_pop <- 1
 
-# Total change variance is 1 (= v_ind + 2 * v_err); v_ind and 2 * v_err each contribute 50%
+# Total change variance is (= v_ind + 2 * v_err); v_ind and 2 * v_err each contribute 50%
 v_ind <- 1#0.5
 v_err <- 0.5#0.25    # 0.5/2
 # No true relationship to initial value
@@ -715,11 +631,7 @@ s1.3_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s1.3_results$plots)
-#p3 <- annotated_panel_plot2(s1.3_results$plots)
 p3 <- panel_plot_row7(s1.3_results$plots)
-
-#cowplot::plot_grid(p1, p2, p3, nrow = 3)
 ```
 
 * Confirms again that regression to the mean due to measurement error produces spurious negative relationship between observed change and initial values.
@@ -735,8 +647,6 @@ p3 <- panel_plot_row7(s1.3_results$plots)
 **When individual variance and measurement error contribute equally**: Spurious negative relationship in observed change vs. initial [caused by regression to the mean from measurement error]; AND spurious positive relationship in KP-adjustment [caused by KP OVERestimating measurement error as total change variance]. Blomqvist gets it right because it knows how much of the change variance is due to measurement error.
 
 
-
-
 # Scenario 2: True negative relationship between change and initial 
 
 ## D: a true relationship, no individual variation in change, but there is measurement error
@@ -748,22 +658,13 @@ b     <- -0.3
 v_ind <- 0
 v_err <- 0.5#(1 - b^2 - v_ind) / 2  # = 0.46875
 
-# Run the simulation with the base plot templates (your plots1 list)
+# Run the simulation with the base plot templates
 s2.2_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s2.2_results$plots)
-#p4 <- annotated_panel_plot2(s2.2_results$plots)
 p4 <- panel_plot_row7(s2.2_results$plots)
 p4
-s2.2_results$slopes
-
-rho <- cor.test(s2.2_results$data$log_init_obs, s2.2_results$data$log_final_obs)$estimate
-rho2 <- 2 * rho * sd(s2.2_results$data$log_init_obs) * sd(s2.2_results$data$log_final_obs) / (var(s2.2_results$data$log_init_obs) + var(s2.2_results$data$log_final_obs))
-rho
-rho2
-s2.2_results$slopes$estimate[1] + (1 - rho)
 ```
 
 * When measurement error dominates along with a true relationship, observed negative relationship is overestimated due to RTM, and K-P adjustment nearly masks true relationship (still there but very weak). Blomqvist gets it right.
@@ -777,13 +678,11 @@ v_err <- 0
 v_ind <- 1#1 - b^2 - 2 * v_err
 #v_err <- (1 - b^2 - v_ind) / 2  # = 0
 
-# Run the simulation with the base plot templates (your plots1 list)
+# Run the simulation with the base plot templates
 s2.3_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s2.3_results$plots)
-#p5 <- annotated_panel_plot2(s2.3_results$plots)
 p5 <- panel_plot_row7(s2.3_results$plots)
 p5
 ```
@@ -798,13 +697,11 @@ b     <- -0.3
 v_ind <- 1#(1 - b^2) / 2
 v_err <- 0.5#(1 - b^2 - v_ind) / 2  # = 0.24375
 
-# Run the simulation with the base plot templates (your plots1 list)
+# Run the simulation with the base plot templates
 s2.4_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s2.4_results$plots)
-#p6 <- annotated_panel_plot2(s2.4_results$plots)
 p6 <- panel_plot_row7(s2.4_results$plots)
 p6
 ```
@@ -817,13 +714,11 @@ b     <- -0.3
 v_ind <- 0#(1 - b^2) / 2
 v_err <- 1.5#(1 - b^2 - v_ind) / 2  # = 0.24375
 
-# Run the simulation with the base plot templates (your plots1 list)
+# Run the simulation with the base plot templates
 s2.5_results <- run_simulation_scenario(
   n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
 
 # Plot it
-#annotated_panel_plot(s2.5_results$plots)
-#p7 <- annotated_panel_plot2(s2.5_results$plots)
 p7 <- panel_plot_row7(s2.5_results$plots)
 p7
 ```
@@ -851,12 +746,12 @@ make_column_header <- function(
   cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
 }
 
-# EXAMPLE: combine header + your 4 rows
-# (Set rel_widths to match how you built each row of 7 panels)
+# combine header + 4 rows
+# (Set rel_widths to match each row of 7 panels)
 header <- make_column_header(
   labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues", 
              "4. Observed\nbaseline effect", "5. Kelly–Price\nadjusted", "6. Blomqvist\nadjusted", "7. Moments\nadjusted", "8. Slope\ncomparison"),
-  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),      # <- use the SAME rel_widths you used for each row
+  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),      # <-  SAME rel_widths used for each row
   base_size = 10
 )
 
@@ -868,7 +763,7 @@ footer <- make_column_header(
 
 fig1 <- cowplot::plot_grid(
   header,
-  p1, p2, p4, p5,              # your four 7-panel rows
+  p1, p2, p4, p5,              # four 7-panel rows
   footer,
   labels = c("", "A", "B", "C", "D", ""),
   ncol = 1,
@@ -1096,6 +991,8 @@ ggsave(filename = "figures/fig2.png", width = 160, height = 120, units = "mm", b
 
 
 ```{r}
+# Alternate version of Figure 2 that shows slopes instead of slope biases
+
 # Pivot estimators to long format for plotting
 results_long2 <- results_grid %>%
   pivot_longer(
@@ -1144,7 +1041,6 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
   coord_fixed(xlim = c(-0.9, 0.9), ylim = c(-0.9, 0.9), expand = 0)
 
 ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm", bg = "white")
-
 ```
 
 * Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
@@ -1177,7 +1073,21 @@ pdam <- pdam %>%
   mutate(log_init_obs = grand_mean_init + group_resid_init,
          log_final_obs = grand_mean_final + group_resid_final,
          log_change_obs = log_final_obs - log_init_obs) %>%
-  select(colony, log_init_obs, log_final_obs, log_change_obs)
+  select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_change_raw, log_init_raw)
+
+
+
+p1 <- ggplot(pdam, aes(x = log_init_raw, y = log_change_raw)) +
+  geom_point(aes(color = sym)) +
+  geom_smooth(aes(group = sym), method = "lm", se = FALSE, color = "black") +
+  coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
+
+p2 <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
+  geom_point(aes(color = sym)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
+
+cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalized"))
 
 # Get pdam variances
 # Total variance in initial observed trait values
@@ -1388,7 +1298,7 @@ from Million et al.
 ### Import and tidy data
 ```{r mill_import_tidy}
 # Import data
-mill <- read_csv("data/subMil1.csv")       # Generated in Carly's script
+mill <- read_csv("data/subMil1.csv")       
 
 # Tidy and filter data
 mill <- mill %>%
@@ -1590,8 +1500,6 @@ mill_slopes_plot <- ggplot(mill_slopes_tbl, aes(x = method, y = estimate)) +
           axis.title.y = element_text(margin = margin(r = 0)),
           axis.text.x = element_text(angle = 45, margin = margin(0,0,0,0,"mm")))
 
-#cowplot::plot_grid(mill_chiolero_plot, mill_initfinal_plot, NULL, NULL, mill_initchange_plot, 
- #                  mill_kp_plot, mill_blomq_plot, mill_slopes_plot, nrow = 2, align = "hv")
 
 mill_plots <- cowplot::plot_grid(
   text_panel_math(
@@ -1612,7 +1520,7 @@ mill_plots
 
 ```
 
-#Fig3
+# Figure 3
 ```{r}
 # Make a column-label header row (7 labels by default)
 make_column_header <- function(
@@ -1633,12 +1541,11 @@ make_column_header <- function(
   cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
 }
 
-# EXAMPLE: combine header + your 4 rows
-# (Set rel_widths to match how you built each row of 7 panels)
+# (Set rel_widths to match each row of 7 panels)
 header <- make_column_header(
   labels = c("1. Dataset       \n ", "2. Observed\nvalues", "3. Observed\nbaseline effect", "4. Kelly-Price\nadjusted", 
              "5. Blomqvist\nadjusted", "6. Moments\nadjusted", "7. Slope\ncomparison"),
-  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),      # <- use the SAME rel_widths you used for each row
+  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),      # <- SAME rel_widths used for each row
   base_size = 10
 )
 footer <- make_column_header(
@@ -1650,7 +1557,7 @@ footer <- make_column_header(
 fig3 <- cowplot::plot_grid(
   header, pdam_plots, mill_plots, footer, align = "hv", 
   ncol = 1, labels = c("", "A", "B", ""),
-  rel_heights = c(0.25, 1, 1, 0.02)  # give the header some breathing room
+  rel_heights = c(0.25, 1, 1, 0.02)  
 )
 fig3
 
@@ -1659,87 +1566,3 @@ ggsave(filename = "figures/fig3.png", width = 200, height = 80, units = "mm", bg
 
 
 
-
-
-```{r, include = F, eval = F}
-# Run the simulation with the base plot templates (your plots1 list)
-b <- 0.5
-n <- 1000
-v_ind <- 2
-v_err <- 0.4
-v_pop <- 1
-
-tsym <- run_simulation_scenario(
-  n = n, b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
-
-#annotated_panel_plot(tsym$plots)
-
-tsym$data
-
-
-dat <- tsym$data
-x <- dat$log_init_obs
-y <- dat$log_change_obs
-
-# 1) OLS (y ~ x)
-fit_lm <- lm(y ~ x)
-b_ols  <- unname(coef(fit_lm)[2])
-a_ols  <- unname(coef(fit_lm)[1])
-
-# 2) Orthogonal regression (major axis / total least squares)
-orth_slope <- function(x, y) {
-  Sxx <- var(x, na.rm = TRUE)
-  Syy <- var(y, na.rm = TRUE)
-  Sxy <- cov(x, y, use = "complete.obs")
-  if (is.na(Sxy) || abs(Sxy) < .Machine$double.eps) return(NA_real_)
-  sign_sxy <- ifelse(Sxy >= 0, 1, -1)
-  (Syy - Sxx + sign_sxy * sqrt((Syy - Sxx)^2 + 4 * Sxy^2)) / (2 * Sxy)
-}
-b_orth <- orth_slope(x, y)
-a_orth <- mean(y, na.rm = TRUE) - b_orth * mean(x, na.rm = TRUE)
-
-# Nice annotation positions
-rx <- range(x, na.rm = TRUE); ry <- range(y, na.rm = TRUE)
-x_anno <- rx[1] + 0.03 * diff(rx)
-y_anno <- ry[2] - 0.05 * diff(ry)
-
-p_lm <- ggplot(dat, aes(x, y)) +
-  geom_point(alpha = 0.3) +
-  geom_abline(slope = b_ols, intercept = a_ols) +
-  annotate("text", x = x_anno, y = y_anno,
-           label = sprintf("OLS slope = %.3f", b_ols), hjust = 0, vjust = 1) +
-  labs(title = "OLS: y ~ x", x = "log_init_obs", y = "log_change_obs") +
-  theme_classic()
-
-p_orth <- ggplot(dat, aes(x, y)) +
-  geom_point(alpha = 0.3) +
-  geom_abline(slope = b_orth, intercept = a_orth) +
-  annotate("text", x = x_anno, y = y_anno,
-           label = sprintf("Orthogonal slope = %.3f", b_orth), hjust = 0, vjust = 1) +
-  labs(title = "Orthogonal (Major Axis)", x = "log_init_obs", y = "log_change_obs") +
-  theme_classic()
-
-cowplot::plot_grid(p_lm, p_orth, nrow = 1)
-
-```
-
-
-```{r}
-# relationship between observed slope, blomqvist's k, and blomqvist's slope
-library(ggplot2)
-
-b_true <- seq(-1, 1, 0.01) # true slope of -1 means all final trait values are zero, cannot have a lower slope than this
-k_vals <- c(0, 0.1, 0.3, 0.5, 0.7)
-
-df <- expand.grid(b_true = b_true, k = k_vals)
-df$b_obs <- (1 - df$k) * df$b_true - df$k
-
-ggplot(df, aes(x = b_true, y = b_obs, color = factor(k))) +
-  geom_line(size = 1) +
-  geom_abline(slope = 1, intercept = 0, linetype = 3) +
-  labs(x = "True slope of change vs. initial", 
-       y = "Observed slope of change vs. initial", 
-       color = "k (fraction of observed\ntrait variance due to\nmeasurement error)") +
-  theme_bw()
-
-```
