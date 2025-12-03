@@ -437,7 +437,7 @@ run_simulation_scenario <- function(
       di <- d[i, , drop = FALSE]
       coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
     },
-    R = 2000
+    R = 10000
   )
   b_obs_confint_boot <- stats::quantile(obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -455,7 +455,7 @@ run_simulation_scenario <- function(
       kp <- rttm.adj(di$log_init_obs, di$log_final_obs)
       coef(lm(kp$adj.growth ~ di$log_init_obs))[2]
     },
-    R = 2000
+    R = 10000
   )
   b_kp_adj_confint_boot <- stats::quantile(kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -479,7 +479,7 @@ run_simulation_scenario <- function(
       #k_i <- v_err / var(di$log_init_obs)     # if we don't want to fix k, use k_i in next line
       blomqvist_b(b_i, k)
     },
-    R = 2000
+    R = 10000
   )
   b_blomq_adj_confint_boot <- stats::quantile(blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
   
@@ -499,7 +499,7 @@ run_simulation_scenario <- function(
       di <- d[i, , drop = FALSE]
       b_i <- moment.nohet(di$log_init_obs, di$log_final_obs)
     },
-    R = 2000
+    R = 10000
   )
   b_mom_adj_confint_boot <- stats::quantile(mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1094,7 +1094,7 @@ cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalize
 pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
 # Blomqvist's k (1 - R) from time-series study (see "pdam_variance.R")
-pdam_k <- 0.4927648 # <- 1 - Repeatability from warming dataset rptR
+pdam_k <- 0.4648801 # <- 1 - Repeatability from warming dataset rptR
 
 # Measurement error variance
 pdam_v_err_abs  <- pdam_k * pdam_var_x_abs
@@ -1116,7 +1116,7 @@ pdam_b_obs_boot <- boot::boot(
     di <- d[i, , drop = FALSE]
     coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
   },
-  R = 2000
+  R = 10000
 )
 pdam_b_obs_confint_boot <- stats::quantile(pdam_b_obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1133,7 +1133,7 @@ pdam_kp_boot <- boot::boot(
     kp <- rttm.adj(di$log_init_obs, di$log_final_obs)
     coef(lm(kp$adj.growth ~ di$log_init_obs))[2]
   },
-  R = 2000
+  R = 10000
 )
 pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1159,7 +1159,7 @@ pdam_blomqvist_boot <- boot::boot(
     #k_i <- pdam_v_err_abs2 / var(di$log_init_obs)
     blomqvist_b(b_i, pdam_k)
   },
-  R = 2000
+  R = 10000
 )
 pdam_b_blomq_adj_confint_boot <- stats::quantile(pdam_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1179,7 +1179,7 @@ pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
       di <- d[i, , drop = FALSE]
       b_i <- moment.nohet.safe(di$log_init_obs, di$log_final_obs)
     },
-    R = 2000
+    R = 10000
   )
   pdam_b_mom_adj_confint_boot <- stats::quantile(pdam_mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1270,7 +1270,7 @@ pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)),
-          axis.text.x = element_text(angle = 45), margin = margin(0,0,0,0,"mm")) +
+          axis.text.x = element_text(angle = 45, margin = margin(0,0,0,0,"mm"))) +
   coord_cartesian(ylim = c(-1.2, 0.2))
 
 
@@ -1344,7 +1344,7 @@ mill_b_obs_boot <- boot::boot(
     di <- d[i, , drop = FALSE]
     coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
   },
-  R = 2000
+  R = 10000
 )
 mill_b_obs_confint_boot <- stats::quantile(mill_b_obs_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1361,7 +1361,7 @@ mill_kp_boot <- boot::boot(
     kp <- rttm.adj(di$log_init_obs, di$log_final_obs)
     coef(lm(kp$adj.growth ~ di$log_init_obs))[2]
   },
-  R = 2000
+  R = 10000
 )
 mill_b_kp_adj_confint_boot <- stats::quantile(mill_kp_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1387,7 +1387,7 @@ mill_blomqvist_boot <- boot::boot(
     #k_i <- mill_v_err_abs / var(di$log_init_obs)
     blomqvist_b(b_i, mill_k)
   },
-  R = 2000
+  R = 10000
 )
 mill_b_blomq_adj_confint_boot <- stats::quantile(mill_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
@@ -1407,7 +1407,7 @@ mill_b_mom_adj <- moment.nohet.safe(mill$log_init_obs, mill$log_final_obs)
       di <- d[i, , drop = FALSE]
       b_i <- moment.nohet.safe(di$log_init_obs, di$log_final_obs)
     },
-    R = 2000
+    R = 10000
   )
   mill_b_mom_adj_confint_boot <- stats::quantile(mill_mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
