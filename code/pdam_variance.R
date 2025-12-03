@@ -12,24 +12,15 @@ pdam_warm <- read_csv("data/PdamRwarming.csv") %>%
          logtotal = log(total)) %>%
   select(colony, sym, time, date, total, logtotal)
 
-# Calculate Repeatability (R) and k (1 - R)
+# Calculate colony Repeatability (R) and Blomqvist's k (1 - R)
+set.seed(1234)
 res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
-                   data = pdam_warm,
-                   adjusted = TRUE, ratio = TRUE)
+                   data = pdam_warm, adjusted = TRUE, ratio = TRUE, nboot = 20000,
+                   parallel = TRUE, ncores = 10)
 summary(res)
-1 - summary(res)$rpt[[1]]$R     # 1 - R = Blomqvist's k = 0.4927648
-summary(res)$rpt[[2]]$R
-summary(res)$boot
+# 1 - Colony repeatability (adjusting for effects of time)
+1-summary(res)$boot[[1]]$Median
+# Median residual variance across bootstraps
+summary(res)$boot[[2]]$Median   # 1 - R = Blomqvist's k = 0.4648801
 
-# Confirm: Recalculate based on variances instead of ratios
-res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 
-                   data = pdam_warm,
-                   adjusted = TRUE, ratio = FALSE)
-res
-
-V_between <- summary(res)$rpt[[1]]$R
-V_within <- summary(res)$rpt[[2]]$R
-R_rpt <- V_between / (V_between + V_within)      # repeatability
-k_rpt <- V_within / (V_between + V_within)       # Blomqvist k  (= 1 − R)
-k_rpt    # k = 0.4927648
 
