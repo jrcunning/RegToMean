@@ -19,6 +19,7 @@ res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed"
 summary(res)
 1 - summary(res)$rpt[[1]]$R     # 1 - R = Blomqvist's k = 0.4927648
 summary(res)$rpt[[2]]$R
+summary(res)$boot
 
 # Confirm: Recalculate based on variances instead of ratios
 res <- rptGaussian(logtotal ~ time + (time|colony), grname = c("colony", "Fixed", "Residual"), 

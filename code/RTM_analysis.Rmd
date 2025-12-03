@@ -1085,6 +1085,8 @@ summary(pdam_mod3)    # slope is still -0.8664
 # Confirm that shift did not alter the global mean symbiont loss
 mean(pdam$log_change_raw)    # raw change values
 mean(pdam$log_change_symnorm)    # shifted change values
+var(pdam$log_change_raw)
+var(pdam$log_change_symnorm)
 
 # Plot raw and shifted values to demonstrate normalization
 p1 <- ggplot(pdam, aes(x = log_init_raw, y = log_change_raw)) +
@@ -1121,7 +1123,8 @@ cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalize
 #          log_final_obs = grand_mean_final + group_resid_final,
 #          log_change_obs = log_final_obs - log_init_obs) %>%
 #   select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_change_raw, log_init_raw, log_final_raw)
-# 
+# var(pdam$log_change_raw)
+# var(pdam$log_change_obs)
 # 
 # pdam_mod1 <- lm(log_change_raw ~ log_init_raw + sym, data = pdam)
 # summary(pdam_mod1)
@@ -1144,23 +1147,27 @@ cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalize
 #   coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
 # 
 # cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalized"))
-# 
+
 
 
 
 # Get pdam variances
 # Total variance in initial observed trait values
 pdam_var_x_abs <- var(pdam$log_init_raw, na.rm = TRUE)
+pdam_var_x_abs
 
 # Blomqvist's k (1 - R) from time-series study (see "pdam_variance.R")
 pdam_k <- 0.4927648 # <- 1 - Repeatability from warming dataset rptR
-pdam_k <- 0.588
+pdam_k <- 0.602  # rough calc. 
+pdam_k <- 0.467
 
 # Measurement error variance
 pdam_v_err_abs  <- pdam_k * pdam_var_x_abs
+pdam_v_err_abs
 
 # Variance in pdam true initial trait values (subtract measurement error variance)
 pdam_v_pop  <- (1 - pdam_k) * pdam_var_x_abs
+pdam_v_pop
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
@@ -1202,6 +1209,7 @@ pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), n
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
 # Calculate variance in pdam individual change (use blomqvist-adjusted slope)
 pdam_v_ind <- var(pdam$log_change_symnorm) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
+pdam_v_ind
 
 # pseudo-exact y’ (used only for plotting panel, not for CI)
 pdam <- pdam %>%
@@ -1256,6 +1264,7 @@ pdam_slopes_tbl <- tibble::tibble(
 pdam_trait <- range(c(pdam$log_init_raw, pdam$log_final_symnorm), na.rm = TRUE)
 pdam_change <- range(pdam$log_change_symnorm, na.rm = TRUE)
 pdam_theta <- sd(pdam$log_final_symnorm) / sd(pdam$log_init_raw)
+pdam_theta
 
 pdam_chiolero_plot <- chiolero_plot(pdam, log_init_raw, log_final_symnorm) + 
   scale_y_continuous(limits = c(-4.1, -0.5)) +
@@ -1273,7 +1282,7 @@ pdam_chiolero_plot <- chiolero_plot(pdam, log_init_raw, log_final_symnorm) +
   parse = TRUE,
   hjust = 0.5, vjust = 2, size = 2
 )
-pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_final_obs, color = sym)) +
+pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_final_symnorm, color = sym)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
     stat_cor(aes(label = ..p.label..), size = 2,
