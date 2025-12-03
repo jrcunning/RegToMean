@@ -1040,7 +1040,7 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
   labs(x = "True slope", y = "Estimated slope", fill = "Method") +
   coord_fixed(xlim = c(-0.9, 0.9), ylim = c(-0.9, 0.9), expand = 0)
 
-ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm", bg = "white")
+#ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm", bg = "white")
 ```
 
 * Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
