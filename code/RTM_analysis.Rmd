@@ -1060,128 +1060,61 @@ pdam <- pdam0 %>%
          log_final_raw = log(augtotal),
          log_change_raw = log_final_raw - log_init_raw)
 
-# Normalize bleaching response by symbiont (intercept shift)
-## Confirm that baseline-change relationship (slope) does not vary by symbiont
-pdam_mod1 <- lm(log_change_raw ~ log_init_raw * sym, data = pdam)
-anova(pdam_mod1)    # no significant interaction => same slope
-pdam_mod2 <- lm(log_change_raw ~ log_init_raw + sym, data = pdam)
-summary(pdam_mod2)  # observed slope is -0.8664. C and D have diff intercepts.
-## Shift final measurements of C and D corals by group intercepts, and
-## maintain global mean change values. 
-p_C <- mean(pdam$sym == "C")   # proportion of colonies with C
-p_D <- mean(pdam$sym == "D")   # proportion of colonies with D
-gamma_D <- coef(pdam_mod2)["symD"]     # D - C intercept difference
+# Remove symbiont effect
+## Calculate grand mean
+grand_mean_init <- mean(pdam$log_init_raw)
+grand_mean_final <- mean(pdam$log_final_raw)
+## Add sym-group residuals to grand mean
 pdam <- pdam %>%
-  mutate(
-    shift = if_else(sym == "C",
-                    p_D * gamma_D,    # shift C up
-                    -p_C * gamma_D),  # shift D down
-    log_change_symnorm = log_change_raw + shift,
-    log_final_symnorm  = log_init_raw + log_change_symnorm
-  )
-# Confirm that this shift did not alter the baseline-change slope
-pdam_mod3 <- lm(log_change_symnorm ~ log_init_raw, data = pdam)
-summary(pdam_mod3)    # slope is still -0.8664
-# Confirm that shift did not alter the global mean symbiont loss
-mean(pdam$log_change_raw)    # raw change values
-mean(pdam$log_change_symnorm)    # shifted change values
-var(pdam$log_change_raw)
-var(pdam$log_change_symnorm)
+  group_by(sym) %>%
+  mutate(group_resid_init = log_init_raw - mean(log_init_raw),
+         group_resid_final = log_final_raw - mean(log_final_raw)) %>%
+  ungroup() %>%
+  mutate(log_init_obs = grand_mean_init + group_resid_init,
+         log_final_obs = grand_mean_final + group_resid_final,
+         log_change_obs = log_final_obs - log_init_obs) %>%
+  select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_change_raw, log_init_raw)
 
-# Plot raw and shifted values to demonstrate normalization
+
+
 p1 <- ggplot(pdam, aes(x = log_init_raw, y = log_change_raw)) +
   geom_point(aes(color = sym)) +
   geom_smooth(aes(group = sym), method = "lm", se = FALSE, color = "black") +
-  stat_regline_equation(aes(group = sym, color = sym)) +
   coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
 
-p2 <- ggplot(pdam, aes(x = log_init_raw, y = log_change_symnorm)) +
+p2 <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
   geom_point(aes(color = sym)) +
   geom_smooth(method = "lm", se = FALSE, color = "black") +
-  stat_regline_equation() +
   coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
 
 cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalized"))
 
-
-
-
-
-
-# # Remove symbiont effect
-# ## Calculate grand mean
-# grand_mean_init <- mean(pdam$log_init_raw)
-# grand_mean_final <- mean(pdam$log_final_raw)
-# ## Add sym-group residuals to grand mean
-# pdam <- pdam %>%
-#   group_by(sym) %>%
-#   mutate(group_resid_init = log_init_raw - mean(log_init_raw),
-#          group_resid_final = log_final_raw - mean(log_final_raw)) %>%
-#   ungroup() %>%
-#   mutate(#log_init_obs = grand_mean_init + group_resid_init,
-#          log_init_obs = log_init_raw,
-#          log_final_obs = grand_mean_final + group_resid_final,
-#          log_change_obs = log_final_obs - log_init_obs) %>%
-#   select(colony, sym, log_init_obs, log_final_obs, log_change_obs, log_change_raw, log_init_raw, log_final_raw)
-# var(pdam$log_change_raw)
-# var(pdam$log_change_obs)
-# 
-# pdam_mod1 <- lm(log_change_raw ~ log_init_raw + sym, data = pdam)
-# summary(pdam_mod1)
-# pdam_mod2 <- lm(log_change_obs ~ log_init_obs, data = pdam)
-# summary(pdam_mod2)
-# pdam_mod3 <- lm(log_change_obs ~ log_init_obs + sym, data = pdam)
-# summary(pdam_mod3)
-# 
-# 
-# p1 <- ggplot(pdam, aes(x = log_init_raw, y = log_change_raw)) +
-#   geom_point(aes(color = sym)) +
-#   geom_smooth(aes(group = sym), method = "lm", se = FALSE, color = "black") +
-#   stat_regline_equation(aes(group = sym, color = sym)) +
-#   coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
-# 
-# p2 <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
-#   geom_point(aes(color = sym)) +
-#   geom_smooth(method = "lm", se = FALSE, color = "black") +
-#   stat_regline_equation() +
-#   coord_cartesian(xlim = c(-3.3, -0.9), ylim = c(-3.1, 0.6))
-# 
-# cowplot::plot_grid(p1, p2, labels = c("                Raw", "Symbiont-normalized"))
-
-
-
-
 # Get pdam variances
 # Total variance in initial observed trait values
-pdam_var_x_abs <- var(pdam$log_init_raw, na.rm = TRUE)
-pdam_var_x_abs
+pdam_var_x_abs <- var(pdam$log_init_obs, na.rm = TRUE)
 
 # Blomqvist's k (1 - R) from time-series study (see "pdam_variance.R")
 pdam_k <- 0.4927648 # <- 1 - Repeatability from warming dataset rptR
-pdam_k <- 0.602  # rough calc. 
-pdam_k <- 0.467
 
 # Measurement error variance
 pdam_v_err_abs  <- pdam_k * pdam_var_x_abs
-pdam_v_err_abs
 
 # Variance in pdam true initial trait values (subtract measurement error variance)
 pdam_v_pop  <- (1 - pdam_k) * pdam_var_x_abs
-pdam_v_pop
 ```
 
 ### Observed and adjusted relationships in *P. damicornis* study
 ```{r}
 # --- 2) Observed slope + CI ---
 #sym-adjusted in advance
-pdam_fit_obs <- lm(log_change_symnorm ~ log_init_raw, data = pdam)
+pdam_fit_obs <- lm(log_change_obs ~ log_init_obs, data = pdam)
 pdam_b_obs   <- coef(pdam_fit_obs)[2]
 pdam_b_obs_confint <- confint(pdam_fit_obs)[2, ]
 pdam_b_obs_boot <- boot::boot(
   data = pdam,
   statistic = function(d, i) {
     di <- d[i, , drop = FALSE]
-    coef(lm(di$log_change_symnorm ~ di$log_init_raw))[2]
+    coef(lm(di$log_change_obs ~ di$log_init_obs))[2]
   },
   R = 2000
 )
@@ -1189,16 +1122,16 @@ pdam_b_obs_confint_boot <- stats::quantile(pdam_b_obs_boot$t, c(0.025, 0.975), n
 
 
 # --- 3) Kelly–Price (point + bootstrap CI) ---
-pdam_kp_full <- rttm.adj(pdam$log_init_raw, pdam$log_final_symnorm)
-pdam_b_kp_adj <- coef(lm(pdam_kp_full$adj.growth ~ pdam$log_init_raw))[2]
+pdam_kp_full <- rttm.adj(pdam$log_init_obs, pdam$log_final_obs)
+pdam_b_kp_adj <- coef(lm(pdam_kp_full$adj.growth ~ pdam$log_init_obs))[2]
 
 set.seed(100)
 pdam_kp_boot <- boot::boot(
   data = pdam,
   statistic = function(d, i) {
     di <- d[i, , drop = FALSE]
-    kp <- rttm.adj(di$log_init_raw, di$log_final_symnorm)
-    coef(lm(kp$adj.growth ~ di$log_init_raw))[2]
+    kp <- rttm.adj(di$log_init_obs, di$log_final_obs)
+    coef(lm(kp$adj.growth ~ di$log_init_obs))[2]
   },
   R = 2000
 )
@@ -1208,14 +1141,13 @@ pdam_b_kp_adj_confint_boot <- stats::quantile(pdam_kp_boot$t, c(0.025, 0.975), n
 # --- 4) Blomqvist (point + bootstrap CI) ---
 pdam_b_blomq_adj <- blomqvist_b(pdam_b_obs, pdam_k)
 # Calculate variance in pdam individual change (use blomqvist-adjusted slope)
-pdam_v_ind <- var(pdam$log_change_symnorm) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
-pdam_v_ind
+pdam_v_ind <- var(pdam$log_change_obs) - (2 * pdam_v_err_abs) - (pdam_b_blomq_adj^2 * pdam_v_pop)
 
 # pseudo-exact y’ (used only for plotting panel, not for CI)
 pdam <- pdam %>%
   dplyr::mutate(
     log_change_kp_adj    = pdam_kp_full$adj.growth,
-    log_change_blomq_adj = blomqvist_pseudo_exact(log_init_raw, log_change_symnorm, pdam_b_blomq_adj)
+    log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_change_obs, pdam_b_blomq_adj)
   )
 
 set.seed(200)
@@ -1223,7 +1155,7 @@ pdam_blomqvist_boot <- boot::boot(
   data = pdam,
   statistic = function(d, i) {
     di <- d[i, , drop = FALSE]
-    b_i <- coef(lm(log_change_symnorm ~ log_init_raw, data = di))[2]
+    b_i <- coef(lm(log_change_obs ~ log_init_obs, data = di))[2]
     #k_i <- pdam_v_err_abs2 / var(di$log_init_obs)
     blomqvist_b(b_i, pdam_k)
   },
@@ -1232,12 +1164,12 @@ pdam_blomqvist_boot <- boot::boot(
 pdam_b_blomq_adj_confint_boot <- stats::quantile(pdam_blomqvist_boot$t, c(0.025, 0.975), na.rm = TRUE)
 
 # --- 5) Method of moments (point + bootstrap CI) ---
-pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_raw, pdam$log_final_symnorm)
+pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_obs, pdam$log_final_obs)
 
   # pseudo-exact y’ (used only for plotting panel, not for CI)
   pdam <- pdam %>%
     dplyr::mutate(
-      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_raw, log_change_symnorm, pdam_b_mom_adj)
+      log_change_mom_adj   = moment.nohet_psuedo_exact(log_init_obs, log_change_obs, pdam_b_mom_adj)
     )
 
   set.seed(200)
@@ -1245,7 +1177,7 @@ pdam_b_mom_adj <- moment.nohet.safe(pdam$log_init_raw, pdam$log_final_symnorm)
     data = pdam,
     statistic = function(d, i) {
       di <- d[i, , drop = FALSE]
-      b_i <- moment.nohet.safe(di$log_init_raw, di$log_final_symnorm)
+      b_i <- moment.nohet.safe(di$log_init_obs, di$log_final_obs)
     },
     R = 2000
   )
@@ -1261,12 +1193,11 @@ pdam_slopes_tbl <- tibble::tibble(
 
 # --- 6) Axis ranges for plots ---
 # ## Compute new plot limit values
-pdam_trait <- range(c(pdam$log_init_raw, pdam$log_final_symnorm), na.rm = TRUE)
-pdam_change <- range(pdam$log_change_symnorm, na.rm = TRUE)
-pdam_theta <- sd(pdam$log_final_symnorm) / sd(pdam$log_init_raw)
-pdam_theta
+pdam_trait <- range(c(pdam$log_init_obs, pdam$log_final_obs), na.rm = TRUE)
+pdam_change <- range(pdam$log_change_obs, na.rm = TRUE)
+pdam_theta <- sd(pdam$log_final_obs) / sd(pdam$log_init_obs)
 
-pdam_chiolero_plot <- chiolero_plot(pdam, log_init_raw, log_final_symnorm) + 
+pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) + 
   scale_y_continuous(limits = c(-4.1, -0.5)) +
   scale_x_continuous(breaks = c(1, 2), 
                        labels = c("initial", "final"),
@@ -1282,7 +1213,7 @@ pdam_chiolero_plot <- chiolero_plot(pdam, log_init_raw, log_final_symnorm) +
   parse = TRUE,
   hjust = 0.5, vjust = 2, size = 2
 )
-pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_final_symnorm, color = sym)) +
+pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
     stat_cor(aes(label = ..p.label..), size = 2,
@@ -1290,7 +1221,7 @@ pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_final_symnorm,
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_trait[1], pdam_trait[2])) +
     ggtitle("Observed")
-pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_symnorm)) +
+pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
     geom_point(alpha = 0.2) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
@@ -1301,7 +1232,7 @@ pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_symnor
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
-pdam_kp_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_kp_adj)) +
+pdam_kp_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_kp_adj)) +
     geom_point(alpha = 0.2) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
@@ -1311,7 +1242,7 @@ pdam_kp_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_kp_adj)) +
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
-pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_blomq_adj)) +
+pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
@@ -1321,7 +1252,7 @@ pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_blomq_adj))
     ggplot2::theme_minimal(base_size = 8)+
     theme(plot.margin = margin(1,0,1,0),
           axis.title.y = element_text(margin = margin(r = 0)))
-pdam_mom_plot <- ggplot(pdam, aes(x = log_init_raw, y = log_change_mom_adj)) +
+pdam_mom_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_mom_adj)) +
     geom_point(alpha = 0.2) +
     stat_cor(aes(label = ..p.label..), size = 2,
                      label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
