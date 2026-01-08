@@ -1,5 +1,5 @@
 ---
-title: "Analysis code for: Failure to distinguish between measurement error and variation in individual change leads to improper correction of regression-to-the-mean artifacts"
+title: "Analysis code for: Failure to distinguish between measurement error and change heterogeneity leads to improper correction of regression-to-the-mean artifacts"
 date: "December 2025"
 output:
   html_document:
@@ -297,7 +297,7 @@ panel_plot_row7 <- function(plots) {
       y = c(0.75, 0.5, 0.25),
       lab = c(
         sprintf("b[true]==%.3g", b),
-        sprintf("sigma[Delta[ind]]^2==%.3g", v_ind),
+        sprintf("sigma[Delta]^2==%.3g", v_ind),
         sprintf("sigma[err]^2==%.3g", v_err)
       )
     )
@@ -707,7 +707,7 @@ p6
 ```
 
 ## G: True relationship, with no meas err and no v_ind
-```{r s2.5, fig.width = 10, fig.height = 5.5}
+```{r s2.5.1, fig.width = 10, fig.height = 5.5}
 # Mixed — moderate contributions from all sources
 # Total variance = b² + v_ind + 2*v_err = 0.025 + 0.475 + 0.475 = 1.00
 b     <- -0.3
@@ -980,7 +980,7 @@ ggplot(results_long, aes(
   ) +
   scale_y_continuous(
     sec.axis = sec_axis(~ .,
-                        name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
+                        name = expression(Change~heterogeneity~~(sigma[Delta]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL,)
   )
 
@@ -1034,7 +1034,7 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
   ) +
   scale_y_continuous(
     sec.axis = sec_axis(~ .,
-                        name = expression(Change~heterogeneity~~(sigma[Delta[ind]]^2/sigma[X]^2)),
+                        name = expression(Change~heterogeneity~~(sigma[Delta]^2/sigma[X]^2)),
                         breaks = NULL, labels = NULL)
   ) +
   labs(x = "True slope", y = "Estimated slope", fill = "Method") +
@@ -1281,7 +1281,7 @@ pdam_plots <- cowplot::plot_grid(
     line3 = "bolditalic(damicornis)",
     line4 = sprintf("n==bold(%s)", formatC(nrow(pdam), format = "fg")),
     line5 = sprintf("s[X]^2==bold(%s)", formatC(pdam_v_pop, format = "fg", digits = 3)),
-    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
+    line6 = sprintf("s[Delta]^2==bold(%s)", formatC(pdam_v_ind, format = "fg", digits = 3)),
     line7 = sprintf("s[err]^2==bold(%s)", formatC(pdam_v_err_abs, format = "fg", digits = 3))
   ),
   pdam_chiolero_plot, pdam_initchange_plot,
@@ -1508,7 +1508,7 @@ mill_plots <- cowplot::plot_grid(
     line3 = "bolditalic(cervicornis)",
     line4 = sprintf("n==bold(%s)", formatC(nrow(mill), format = "fg")),
     line5 = sprintf("s[X]^2==bold(%s)", formatC(mill_v_pop, format = "fg", digits = 3)),
-    line6 = sprintf("s[Delta[ind]]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
+    line6 = sprintf("s[Delta]^2==bold(%s)", formatC(mill_v_ind, format = "fg", digits = 3)),
     line7 = sprintf("s[err]^2==bold(%s)", formatC(mill_v_err_abs, format = "fg", digits = 3))
   ),
   mill_chiolero_plot, mill_initchange_plot,
