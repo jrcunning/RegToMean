@@ -1,0 +1,352 @@
+---
+title: "Figure 2 alternatives for reviewer response"
+date: "May 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE)
+```
+
+# Purpose
+
+Reviewer feedback noted that the Blomqvist points and lines in Figure 2 are
+often hidden. This notebook recreates Figure 2 and tries small graphical
+adjustments before changing the analysis:
+
+1. Put the dashed zero line behind the data.
+2. Adjust transparency and draw Blomqvist last.
+3. Add a small horizontal dodge if visibility remains poor.
+
+# Setup
+
+```{r libraries}
+library(tidyverse)
+library(boot)
+library(future)
+library(furrr)
+```
+
+```{r helpers}
+dir.create("figures/figure2_alternatives", recursive = TRUE, showWarnings = FALSE)
+
+v_pop <- 1
+
+rttm.adj <- function(m1, m2) {
+  raw.growth <- m2 - m1
+  vart <- var.test(m1, m2, paired = TRUE)
+  vpv <- vart$p.value
+  rho <- cor.test(m1, m2)$estimate
+  m1sd <- sd(m1)
+  m2sd <- sd(m2)
+  m1v <- var(m1)
+  m2v <- var(m2)
+  m1m <- mean(m1)
+  m2m <- mean(m2)
+  pm <- mean(raw.growth)
+  rho2 <- (2 * rho * m1sd * m2sd) / (m1v + m2v)
+  rhof <- ifelse(vpv <= 0.05, rho, rho2)
+  dstar <- (rhof * (m1 - m1m) - (m2 - m2m)) * -1
+  data.frame(raw.growth = raw.growth, dstar = dstar, adj.growth = pm + dstar)
+}
+
+moment.nohet.safe <- function(x1, x2) {
+  z1 <- var(x2) - var(x1)
+  z2 <- cov(x2 - x1, x1) + var(x1)
+  w <- z1 / z2
+
+  if (!is.finite(w) || abs(z2) < 1e-8) return(NA_real_)
+
+  disc <- (2 - w)^2 + 4 * w
+  if (disc < 0) return(NA_real_)
+
+  root_plus <- (-(2 - w) + sqrt(disc)) / 2
+  root_minus <- (-(2 - w) - sqrt(disc)) / 2
+
+  b <- ifelse(cov(x1, x2) > 0, root_plus, root_minus)
+  if (!is.finite(b) || abs(b) > 10) b <- NA_real_
+  b
+}
+
+evaluate_methods <- function(v_pop, k, v_ind_rel, b_true, reps, n, v_err, v_ind, seed) {
+  replicate_results <- purrr::map_dfr(seq_len(reps), function(i) {
+    set.seed(seed + i)
+
+    log_init_true <- rnorm(n, 0, sqrt(v_pop))
+    log_change_true <- b_true * log_init_true + rnorm(n, 0, sqrt(v_ind))
+    log_final_true <- log_init_true + log_change_true
+    e_init <- rnorm(n, 0, sqrt(v_err))
+    e_final <- rnorm(n, 0, sqrt(v_err))
+
+    syn_df <- tibble(
+      log_init_obs = log_init_true + e_init,
+      log_final_obs = log_final_true + e_final,
+      log_change_obs = log_final_obs - log_init_obs
+    ) %>%
+      mutate(log_change_kp_adj = rttm.adj(log_init_obs, log_final_obs)[, 3])
+
+    b_obs <- coef(lm(log_change_obs ~ log_init_obs, data = syn_df))[[2]]
+    b_kp <- coef(lm(log_change_kp_adj ~ log_init_obs, data = syn_df))[[2]]
+    k_blomq <- v_err / (v_pop + v_err)
+    b_blomq <- (b_obs + k_blomq) / (1 - k_blomq)
+    b_mom <- moment.nohet.safe(syn_df$log_init_obs, syn_df$log_final_obs)
+    var_p <- var.test(syn_df$log_init_obs, syn_df$log_final_obs)$p.value
+
+    tibble(
+      b_obs = b_obs,
+      b_blomq = b_blomq,
+      b_mom = b_mom,
+      b_kp = b_kp,
+      b_true = b_true,
+      var_p = var_p,
+      obs_bias = b_obs - b_true,
+      blomq_bias = b_blomq - b_true,
+      kp_bias = b_kp - b_true,
+      mom_bias = b_mom - b_true
+    )
+  })
+
+  replicate_results %>%
+    summarise(across(
+      .cols = c(b_obs, b_blomq, b_mom, b_kp, var_p, obs_bias, blomq_bias, kp_bias, mom_bias),
+      .fns = list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd = ~ sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )) %>%
+    mutate(
+      b_true = b_true,
+      v_ind = v_ind,
+      v_err = v_err,
+      k = k,
+      v_ind_rel = v_ind_rel
+    )
+}
+
+facet_labeller <- function(labels) {
+  to_num <- function(x) suppressWarnings(as.numeric(as.character(x)))
+  fmt <- function(x) formatC(x, format = "f", digits = 2)
+
+  if ("k" %in% names(labels)) {
+    k <- to_num(labels$k)
+    k_cat <- ifelse(k <= 0.05, "Very low",
+      ifelse(k <= 0.25, "Moderate",
+        ifelse(k <= 0.50, "High", "Very high")
+      )
+    )
+    labels$k <- paste0(k_cat, " (", fmt(k / (1 - k)), ")")
+  }
+
+  if ("v_ind" %in% names(labels)) {
+    v <- to_num(labels$v_ind)
+    v_cat <- ifelse(v <= 0.05, "Minimal",
+      ifelse(v <= 1, "Substantial",
+        ifelse(v <= 10, "Extreme", "Extreme")
+      )
+    )
+    labels$v_ind <- paste0(v_cat, " (", fmt(v / v_pop), ")")
+  }
+
+  labels
+}
+
+lab_sig1 <- function(x) formatC(signif(x, 1), digits = 1, format = "fg")
+
+method_labels <- c(
+  obs_bias_mean = "Observed",
+  kp_bias_mean = "Kelly-Price",
+  mom_bias_mean = "Moments",
+  blomq_bias_mean = "Blomqvist"
+)
+
+method_shapes <- c(
+  obs_bias_mean = 16,
+  kp_bias_mean = 17,
+  mom_bias_mean = 15,
+  blomq_bias_mean = 18
+)
+```
+
+# Load Or Generate Results
+
+The main analysis has an optional `results_grid.rds` workflow. If that file
+exists, this notebook uses it. Otherwise, it regenerates the simulation grid.
+
+```{r results-grid}
+if (file.exists("results_grid.rds")) {
+  results_grid <- readRDS("results_grid.rds")
+} else {
+  param_grid <- expand.grid(
+    v_pop = 1,
+    k = c(0.0099, 0.23, 0.5),
+    v_ind_rel = c(5, 0.5, 0.01),
+    b_true = c(-0.9, -0.5, -0.2, 0, 0.2, 0.5, 0.9),
+    reps = 1000,
+    n = 200
+  ) %>%
+    mutate(
+      v_err = v_pop * k / (1 - k),
+      v_ind = v_pop * v_ind_rel
+    )
+
+  set.seed(999)
+  param_grid <- param_grid %>%
+    mutate(seed = sample.int(1e6, size = n(), replace = FALSE))
+
+  future::plan(multisession)
+  results_grid <- furrr::future_pmap_dfr(
+    param_grid,
+    evaluate_methods,
+    .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
+  )
+}
+
+results_long_base <- results_grid %>%
+  pivot_longer(
+    cols = c(obs_bias_mean, kp_bias_mean, blomq_bias_mean, mom_bias_mean),
+    names_to = "method",
+    values_to = "error"
+  ) %>%
+  mutate(
+    sd = case_when(
+      method == "obs_bias_mean" ~ obs_bias_sd,
+      method == "kp_bias_mean" ~ kp_bias_sd,
+      method == "blomq_bias_mean" ~ blomq_bias_sd,
+      method == "mom_bias_mean" ~ mom_bias_sd
+    ),
+    v_ind = factor(v_ind, levels = c(5, 0.5, 0.01))
+  ) %>%
+  select(v_err, k, v_ind, b_true, method, error, sd)
+
+results_long_blomq_last <- results_long_base %>%
+  mutate(method = factor(
+    method,
+    levels = c("obs_bias_mean", "kp_bias_mean", "mom_bias_mean", "blomq_bias_mean")
+  )) %>%
+  arrange(method)
+```
+
+# Plot Helper
+
+```{r plot-helper}
+plot_fig2_bias <- function(data, draw_zero_back = FALSE,
+                           quiet_errorbars = FALSE,
+                           point_alpha = 0.6,
+                           line_alpha = 0.6,
+                           dodge_width = NULL,
+                           use_method_shapes = FALSE) {
+  p <- ggplot(data, aes(
+    x = b_true,
+    y = pmax(pmin(error, 0.75), -0.75),
+    color = method,
+    group = method
+  ))
+
+  if (use_method_shapes) {
+    p <- p + aes(shape = method)
+  } else {
+    p <- p + aes(shape = factor(ifelse(error > 0.75, 2, ifelse(error < -0.75, 6, 16))))
+  }
+
+  if (draw_zero_back) {
+    p <- p + geom_hline(yintercept = 0, linetype = "dashed",
+                        color = "black", linewidth = 0.35, alpha = 0.55)
+  }
+
+  if (is.null(dodge_width)) {
+    p <- p +
+      geom_line(linewidth = 0.5, alpha = line_alpha) +
+      geom_errorbar(
+        aes(ymin = error - sd, ymax = error + sd),
+        width = 0.05,
+        alpha = if (quiet_errorbars) 0.25 else 0.6
+      ) +
+      geom_point(size = 1.5, alpha = point_alpha)
+  } else {
+    dodge <- position_dodge(width = dodge_width)
+    p <- p +
+      geom_line(position = dodge, linewidth = 0.5, alpha = line_alpha) +
+      geom_errorbar(
+        aes(ymin = error - sd, ymax = error + sd),
+        position = dodge,
+        width = 0.04,
+        alpha = if (quiet_errorbars) 0.25 else 0.6
+      ) +
+      geom_point(position = dodge, size = 1.5, alpha = point_alpha)
+  }
+
+  if (!draw_zero_back) {
+    p <- p + geom_hline(yintercept = 0, linetype = "dashed")
+  }
+
+  p +
+    scale_shape_manual(
+      values = if (use_method_shapes) method_shapes else c("2" = 2, "6" = 6, "16" = 16),
+      guide = if (use_method_shapes) "legend" else "none",
+      breaks = if (use_method_shapes) names(method_labels) else waiver(),
+      labels = if (use_method_shapes) method_labels else waiver()
+    ) +
+    scale_color_discrete(
+      breaks = names(method_labels),
+      labels = method_labels
+    ) +
+    facet_grid(v_ind ~ k, labeller = facet_labeller) +
+    coord_cartesian(ylim = c(-0.75, 0.75)) +
+    labs(
+      x = "True slope of change vs. initial",
+      y = "Slope error (estimate - true)",
+      color = "Method",
+      shape = "Method"
+    ) +
+    theme_minimal(base_size = 12) +
+    scale_x_continuous(
+      labels = lab_sig1, expand = c(0.015, 0.015),
+      sec.axis = sec_axis(~ .,
+        name = expression(Measurement ~ error ~~ (sigma[error]^2 / sigma[X]^2)),
+        breaks = NULL, labels = NULL
+      )
+    ) +
+    scale_y_continuous(
+      sec.axis = sec_axis(~ .,
+        name = expression(Change ~ heterogeneity ~~ (sigma[Delta]^2 / sigma[X]^2)),
+        breaks = NULL, labels = NULL
+      )
+    )
+}
+```
+
+# Selected Alternative: Method Shapes With Slight Dodge
+
+This version uses method-specific point shapes, a slight horizontal dodge,
+more transparent lines/points, quieter error bars, the zero reference behind
+the data, and draws Blomqvist last so it sits on top.
+
+```{r fig2-method-shapes-dodge, fig.width=6.3, fig.height=4.7}
+fig2_alt_method_shapes_dodge <- plot_fig2_bias(
+  results_long_blomq_last,
+  draw_zero_back = TRUE,
+  quiet_errorbars = TRUE,
+  point_alpha = 0.55,
+  line_alpha = 0.55,
+  dodge_width = 0.05,
+  use_method_shapes = TRUE
+)
+
+fig2_alt_method_shapes_dodge
+
+ggsave(
+  filename = "figures/figure2_alternatives/fig2_alt_method_shapes_dodge.png",
+  plot = fig2_alt_method_shapes_dodge,
+  width = 160,
+  height = 120,
+  units = "mm",
+  bg = "white"
+)
+```

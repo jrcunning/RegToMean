@@ -894,7 +894,7 @@ results_grid <- future_pmap_dfr(
   evaluate_methods,
   .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
 )
-# saveRDS(results_grid, file = "results_grid.rds")
+saveRDS(results_grid, file = "results_grid.rds")
 # results_grid <- readRDS("results_grid.rds")
 
 
@@ -1563,6 +1563,5 @@ fig3
 
 ggsave(filename = "figures/fig3.png", width = 200, height = 80, units = "mm", bg = "white")
 ```
-
 
 

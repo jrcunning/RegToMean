@@ -1,0 +1,692 @@
+---
+title: "Figure 1 alternatives for reviewer response"
+date: "May 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE)
+```
+
+# Purpose
+
+Reviewer feedback suggested moving the separate baseline-change correction panels
+from Figure 1 columns 4-7 to the supplement because the slope-estimate panel
+conveys the same inferential result with less clutter.
+
+This notebook recreates the submitted Figure 1 and constructs several alternatives
+that keep different amounts of the baseline-change visualization.
+
+The preferred organization is to keep this file as a figure-design sandbox. The
+simulation data are regenerated here from the same parameter values and seeds,
+rather than saved out of `RTM_analysis.Rmd`, so this file can be rendered
+independently while leaving the main manuscript analysis untouched.
+
+# Setup
+
+```{r libraries}
+library(tidyverse)
+library(cowplot)
+library(ggpubr)
+library(boot)
+```
+
+```{r helpers}
+dir.create("figures/figure1_alternatives", recursive = TRUE, showWarnings = FALSE)
+
+method_colors <- c(
+  "Observed" = "#0072B2",
+  "Kelly-Price" = "#D55E00",
+  "Blomqvist" = "#009E73",
+  "Moments" = "#CC79A7",
+  "Obs." = "#0072B2",
+  "K.-P." = "#D55E00",
+  "Blom." = "#009E73",
+  "Mom." = "#CC79A7"
+)
+
+true_slope_color <- "#8B0000"
+
+method_linetypes <- c(
+  "Observed" = "solid",
+  "Kelly-Price" = "22",
+  "Blomqvist" = "42",
+  "Moments" = "73"
+)
+
+rttm.adj <- function(m1, m2) {
+  raw.growth <- m2 - m1
+  vart <- var.test(m1, m2, paired = TRUE)
+  vpv <- vart$p.value
+  rho <- cor.test(m1, m2)$estimate
+  m1sd <- sd(m1)
+  m2sd <- sd(m2)
+  m1v <- var(m1)
+  m2v <- var(m2)
+  m1m <- mean(m1)
+  m2m <- mean(m2)
+  pm <- mean(raw.growth)
+  rho2 <- (2 * rho * m1sd * m2sd) / (m1v + m2v)
+  rhof <- ifelse(vpv <= 0.05, rho, rho2)
+  dstar <- (rhof * (m1 - m1m) - (m2 - m2m)) * -1
+  data.frame(raw.growth = raw.growth, dstar = dstar, adj.growth = pm + dstar)
+}
+
+blomqvist_b <- function(b_obs, k) {
+  (b_obs + k) / (1 - k)
+}
+
+blomqvist_pseudo_exact <- function(x, y, b_blom) {
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  e <- resid(lm(y ~ x))
+  a <- mean(y) - b_blom * mean(x)
+  a + b_blom * x + e
+}
+
+moment.nohet.safe <- function(x1, x2) {
+  z1 <- var(x2) - var(x1)
+  z2 <- cov(x2 - x1, x1) + var(x1)
+  w <- z1 / z2
+
+  if (!is.finite(w) || abs(z2) < 1e-8) return(NA_real_)
+
+  disc <- (2 - w)^2 + 4 * w
+  if (disc < 0) return(NA_real_)
+
+  root_plus <- (-(2 - w) + sqrt(disc)) / 2
+  root_minus <- (-(2 - w) - sqrt(disc)) / 2
+
+  b <- ifelse(cov(x1, x2) > 0, root_plus, root_minus)
+  if (!is.finite(b) || abs(b) > 10) b <- NA_real_
+  b
+}
+
+moment.nohet_pseudo_exact <- function(x, y, b_mom) {
+  if (!is.finite(b_mom)) return(rep(NA_real_, length(x)))
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  e <- resid(lm(y ~ x))
+  a <- mean(y) - b_mom * mean(x)
+  a + b_mom * x + e
+}
+
+theme_fig1_panel <- function(base_size = 8) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.margin = margin(1, 1, 1, 1),
+      axis.title.y = element_text(margin = margin(r = -2)),
+      panel.grid.minor = element_blank()
+    )
+}
+
+make_column_header <- function(labels, rel_widths, base_size = 10,
+                               face = "bold", vjust = 0.5) {
+  heads <- lapply(labels, function(lab) {
+    cowplot::ggdraw() +
+      cowplot::draw_label(
+        lab,
+        x = 0.5, y = 0.5,
+        hjust = 0.5, vjust = vjust,
+        fontface = face, size = base_size
+      )
+  })
+  cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
+}
+
+text_panel_math <- function(line1, line2 = NULL, line3 = NULL,
+                            base_size = 8, line_y_top = 0.78,
+                            line_y_bot = 0.22) {
+  lines <- c(line1, line2, line3)
+  lines <- lines[!vapply(lines, function(z) is.null(z) || identical(z, ""), logical(1))]
+  ys <- if (length(lines) == 1) 0.5 else seq(line_y_top, line_y_bot, length.out = length(lines))
+
+  ggplot(data.frame(x = 0.5, y = ys, lab = lines), aes(x, y, label = lab)) +
+    geom_text(parse = TRUE, hjust = 0.5, vjust = 0.5,
+              size = base_size * 0.35, fontface = "bold") +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
+    theme_void(base_size = base_size) +
+    theme(plot.margin = margin(3, 3, 3, 3))
+}
+
+chiolero_plot_simple <- function(df, init_var, final_var, seed = 123,
+                                 jitter_width = 0.08) {
+  init_sym <- rlang::ensym(init_var)
+  final_sym <- rlang::ensym(final_var)
+
+  set.seed(seed)
+  jitter <- runif(nrow(df), -jitter_width, jitter_width)
+
+  d <- df %>%
+    mutate(
+      x1 = 1 + jitter,
+      x2 = 2 + jitter,
+      y1 = !!init_sym,
+      y2 = !!final_sym
+    )
+
+  ggplot(d, aes(x = x1, y = y1)) +
+    geom_segment(aes(xend = x2, yend = y2), alpha = 0.12, linewidth = 0.2) +
+    geom_point(size = 1.2, alpha = 0.25) +
+    geom_point(aes(x = x2, y = y2), size = 1.2, alpha = 0.25) +
+    scale_x_continuous(breaks = c(1, 2), labels = c("initial", "final"),
+                       expand = c(0.1, 0.1)) +
+    labs(x = NULL, y = "value") +
+    theme_fig1_panel()
+}
+
+estimate_ci <- function(df, y_var, x_var = log_init_obs, n_boot = 10000, seed = 1) {
+  y_sym <- rlang::ensym(y_var)
+  x_sym <- rlang::ensym(x_var)
+  fit <- lm(rlang::new_formula(rlang::expr(!!y_sym), rlang::expr(!!x_sym)), data = df)
+  estimate <- coef(fit)[2]
+
+  set.seed(seed)
+  boot_out <- boot::boot(
+    data = df,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      coef(lm(rlang::new_formula(rlang::expr(!!y_sym), rlang::expr(!!x_sym)), data = di))[2]
+    },
+    R = n_boot
+  )
+
+  ci <- quantile(boot_out$t, c(0.025, 0.975), na.rm = TRUE)
+  c(estimate = unname(estimate), ci_lower = ci[[1]], ci_upper = ci[[2]])
+}
+
+run_simulation_scenario <- function(n, b, v_ind, v_err, v_pop = 1,
+                                    seed = 4, n_boot = 10000) {
+  set.seed(seed)
+
+  df <- tibble(
+    log_init_true = rnorm(n, 0, sqrt(v_pop)),
+    log_change_true = b * log_init_true + rnorm(n, 0, sqrt(v_ind)),
+    log_final_true = log_init_true + log_change_true,
+    e_init = rnorm(n, 0, sqrt(v_err)),
+    e_final = rnorm(n, 0, sqrt(v_err)),
+    log_init_obs = log_init_true + e_init,
+    log_final_obs = log_final_true + e_final,
+    log_change_obs = log_final_obs - log_init_obs
+  )
+
+  kp <- rttm.adj(df$log_init_obs, df$log_final_obs)
+  b_obs <- coef(lm(log_change_obs ~ log_init_obs, data = df))[2]
+  k <- v_err / (v_pop + v_err)
+  b_blomq <- blomqvist_b(b_obs, k)
+  b_mom <- moment.nohet.safe(df$log_init_obs, df$log_final_obs)
+
+  df <- df %>%
+    mutate(
+      log_change_kp_adj = kp$adj.growth,
+      log_change_blomq_adj = blomqvist_pseudo_exact(log_init_obs, log_change_obs, b_blomq),
+      log_change_mom_adj = moment.nohet_pseudo_exact(log_init_obs, log_change_obs, b_mom)
+    )
+
+  obs_ci <- estimate_ci(df, log_change_obs, n_boot = n_boot, seed = seed + 10)
+  kp_ci <- estimate_ci(df, log_change_kp_adj, n_boot = n_boot, seed = seed + 20)
+  blomq_ci <- c(
+    estimate = b_blomq,
+    ci_lower = blomqvist_b(obs_ci[["ci_lower"]], k),
+    ci_upper = blomqvist_b(obs_ci[["ci_upper"]], k)
+  )
+
+  set.seed(seed + 30)
+  mom_boot <- boot::boot(
+    data = df,
+    statistic = function(d, i) {
+      di <- d[i, , drop = FALSE]
+      moment.nohet.safe(di$log_init_obs, di$log_final_obs)
+    },
+    R = n_boot
+  )
+  mom_ci <- quantile(mom_boot$t, c(0.025, 0.975), na.rm = TRUE)
+
+  slopes <- tibble(
+    method = factor(c("Obs.", "K.-P.", "Blom.", "Mom."),
+                    levels = c("Obs.", "K.-P.", "Blom.", "Mom.")),
+    estimate = c(obs_ci[["estimate"]], kp_ci[["estimate"]], b_blomq, b_mom),
+    ci_lower = c(obs_ci[["ci_lower"]], kp_ci[["ci_lower"]], blomq_ci[["ci_lower"]], mom_ci[[1]]),
+    ci_upper = c(obs_ci[["ci_upper"]], kp_ci[["ci_upper"]], blomq_ci[["ci_upper"]], mom_ci[[2]])
+  )
+
+  list(
+    data = df,
+    slopes = slopes,
+    params = list(b = b, v_ind = v_ind, v_err = v_err, v_pop = v_pop)
+  )
+}
+
+make_relationship_plot <- function(df, y, title = NULL, xlim = NULL,
+                                   ylim = NULL, ylab = "change") {
+  y_sym <- rlang::ensym(y)
+
+  ggplot(df, aes(x = log_init_obs, y = !!y_sym)) +
+    geom_point(alpha = 0.2, size = 0.7) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 0.5) +
+    coord_cartesian(xlim = xlim, ylim = ylim) +
+    labs(title = title, x = NULL, y = ylab) +
+    theme_fig1_panel() +
+    theme(aspect.ratio = 1)
+}
+
+make_slope_plot <- function(slopes, b_true, ylim = c(-0.61, 0.61)) {
+  ggplot(slopes, aes(x = method, y = estimate)) +
+    geom_hline(yintercept = b_true, color = true_slope_color, linewidth = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
+    geom_errorbar(
+      aes(ymin = ci_lower, ymax = ci_upper, color = method),
+      width = 0.05,
+      linewidth = 0.3
+    ) +
+    geom_point(aes(color = method), size = 1.2) +
+    scale_color_manual(values = method_colors, guide = "none") +
+    coord_cartesian(ylim = ylim, clip = "off") +
+    labs(x = NULL, y = "slope") +
+    theme_fig1_panel() +
+    theme(
+      aspect.ratio = 1,
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+    )
+}
+
+make_slope_plot_original <- function(slopes, b_true, ylim = c(-0.61, 0.61)) {
+  ggplot(slopes, aes(x = method, y = estimate)) +
+    geom_hline(yintercept = b_true, color = "red", linewidth = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05, linewidth = 0.3) +
+    geom_point(size = 1.2) +
+    coord_cartesian(ylim = ylim, clip = "off") +
+    labs(x = NULL, y = "slope") +
+    theme_fig1_panel() +
+    theme(
+      aspect.ratio = 1,
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+    )
+}
+
+make_overlay_plot <- function(result, xlim = NULL, ylim = NULL) {
+  df <- result$data
+  line_df <- tibble(
+    method = factor(c("Observed", "Kelly-Price", "Blomqvist", "Moments"),
+                    levels = c("Observed", "Kelly-Price", "Blomqvist", "Moments")),
+    y = c("log_change_obs", "log_change_kp_adj", "log_change_blomq_adj", "log_change_mom_adj")
+  ) %>%
+    mutate(
+      fit = map(y, ~ lm(reformulate("log_init_obs", .x), data = df)),
+      intercept = map_dbl(fit, ~ coef(.x)[1]),
+      slope = map_dbl(fit, ~ coef(.x)[2])
+    )
+
+  ggplot(df, aes(x = log_init_obs, y = log_change_obs)) +
+    geom_point(alpha = 0.06, size = 0.55) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
+    geom_abline(
+      data = line_df,
+      aes(intercept = intercept, slope = slope, color = method, linetype = method),
+      linewidth = 0.6
+    ) +
+    geom_abline(intercept = 0, slope = result$params$b, color = true_slope_color, linewidth = 0.45) +
+    coord_cartesian(xlim = xlim, ylim = ylim) +
+    scale_color_manual(values = method_colors) +
+    scale_linetype_manual(values = method_linetypes) +
+    labs(x = NULL, y = "observed change", color = "Method", linetype = "Method") +
+    theme_fig1_panel() +
+    theme(legend.position = "none", aspect.ratio = 1)
+}
+
+make_method_legend <- function(base_size = 8) {
+  legend_df <- tibble(
+    method = factor(c("Observed", "Kelly-Price", "Blomqvist", "Moments"),
+                    levels = c("Observed", "Kelly-Price", "Blomqvist", "Moments")),
+    x = c(0.18, 0.57, 0.18, 0.57),
+    xend = x + 0.08,
+    y = c(0.7, 0.7, 0.25, 0.25)
+  )
+
+  ggplot(legend_df) +
+    geom_segment(
+      aes(x = x, xend = xend, y = y, yend = y, color = method, linetype = method),
+      linewidth = 0.65
+    ) +
+    geom_text(aes(x = xend + 0.015, y = y, label = method),
+              hjust = 0, vjust = 0.5, size = base_size * 0.35) +
+    scale_color_manual(values = method_colors) +
+    scale_linetype_manual(values = method_linetypes) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
+    theme_void(base_size = base_size) +
+    theme(legend.position = "none", plot.margin = margin(0, 0, 0, 0))
+}
+```
+
+# Simulate Scenarios
+
+These are the four rows used in the submitted Figure 1.
+
+```{r simulate}
+n <- 200
+v_pop <- 1
+
+scenario_specs <- tribble(
+  ~scenario, ~b,   ~v_ind, ~v_err,
+  "A",       0,    0,      0.5,
+  "B",       0,    1,      0,
+  "C",      -0.3,  0,      0.5,
+  "D",      -0.3,  1,      0
+)
+
+scenario_results <- scenario_specs %>%
+  mutate(result = pmap(
+    list(b, v_ind, v_err),
+    ~ run_simulation_scenario(n = n, b = ..1, v_ind = ..2, v_err = ..3, v_pop = v_pop)
+  ))
+```
+
+# Row Constructors
+
+```{r row-constructors}
+row_limits <- function(result) {
+  df <- result$data
+  max_abs_change <- df %>%
+    select(log_init_true, log_change_true, log_init_obs, log_change_obs,
+           log_change_kp_adj, log_change_blomq_adj, log_change_mom_adj) %>%
+    summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+    pull(max_abs)
+
+  max_abs_value <- df %>%
+    select(log_init_true, log_final_true, log_init_obs, log_final_obs) %>%
+    summarise(max_abs = max(abs(c_across(everything())), na.rm = TRUE)) %>%
+    pull(max_abs)
+
+  list(
+    value = c(-max_abs_value, max_abs_value),
+    change = c(-max_abs_change, max_abs_change)
+  )
+}
+
+param_panel <- function(result) {
+  p <- result$params
+  text_panel_math(
+    line1 = sprintf("b[true]==%.3g", p$b),
+    line2 = sprintf("sigma[Delta]^2==%.3g", p$v_ind),
+    line3 = sprintf("sigma[err]^2==%.3g", p$v_err),
+    line_y_top = 0.68,
+    line_y_bot = 0.2
+  )
+}
+
+make_original_row <- function(result) {
+  lim <- row_limits(result)
+  df <- result$data
+
+  p_true <- chiolero_plot_simple(df, log_init_true, log_final_true) +
+    coord_cartesian(ylim = lim$value)
+  p_obs_time <- chiolero_plot_simple(df, log_init_obs, log_final_obs) +
+    coord_cartesian(ylim = lim$value)
+  p_obs <- make_relationship_plot(df, log_change_obs, xlim = lim$change, ylim = lim$change)
+  p_kp <- make_relationship_plot(df, log_change_kp_adj, xlim = lim$change, ylim = lim$change)
+  p_blomq <- make_relationship_plot(df, log_change_blomq_adj, xlim = lim$change, ylim = lim$change)
+  p_mom <- make_relationship_plot(df, log_change_mom_adj, xlim = lim$change, ylim = lim$change)
+  p_slopes <- make_slope_plot_original(result$slopes, result$params$b)
+
+  cowplot::plot_grid(
+    param_panel(result), p_true, p_obs_time, p_obs, p_kp, p_blomq, p_mom, p_slopes,
+    nrow = 1,
+    align = "h",
+    rel_widths = c(0.6, 0.6, 0.6, rep(1, 5))
+  )
+}
+
+make_original_drop_adjusted_row <- function(result) {
+  lim <- row_limits(result)
+  df <- result$data
+
+  p_true <- chiolero_plot_simple(df, log_init_true, log_final_true) +
+    coord_cartesian(ylim = lim$value)
+  p_obs_time <- chiolero_plot_simple(df, log_init_obs, log_final_obs) +
+    coord_cartesian(ylim = lim$value)
+  p_obs <- make_relationship_plot(df, log_change_obs, xlim = lim$change, ylim = lim$change)
+  p_slopes <- make_slope_plot_original(result$slopes, result$params$b)
+
+  cowplot::plot_grid(
+    param_panel(result), p_true, p_obs_time, p_obs, p_slopes,
+    nrow = 1,
+    align = "h",
+    rel_widths = c(0.6, 0.6, 0.6, 0.67, 0.67)
+  )
+}
+
+make_reviewer_minimal_row <- function(result) {
+  lim <- row_limits(result)
+  df <- result$data
+
+  cowplot::plot_grid(
+    param_panel(result),
+    chiolero_plot_simple(df, log_init_true, log_final_true) + coord_cartesian(ylim = lim$value),
+    chiolero_plot_simple(df, log_init_obs, log_final_obs) + coord_cartesian(ylim = lim$value),
+    make_slope_plot_original(result$slopes, result$params$b),
+    nrow = 1,
+    align = "h",
+    rel_widths = c(0.5, 0.5, 0.5, 0.85)
+  )
+}
+
+make_overlay_row <- function(result) {
+  lim <- row_limits(result)
+  df <- result$data
+
+  cowplot::plot_grid(
+    param_panel(result),
+    chiolero_plot_simple(df, log_init_true, log_final_true) + coord_cartesian(ylim = lim$value),
+    chiolero_plot_simple(df, log_init_obs, log_final_obs) + coord_cartesian(ylim = lim$value),
+    make_overlay_plot(result, xlim = lim$change, ylim = lim$change),
+    make_slope_plot(result$slopes, result$params$b),
+    nrow = 1,
+    align = "h",
+    rel_widths = c(0.5, 0.5, 0.5, 0.78, 0.78)
+  )
+}
+```
+
+# Original Figure 1
+
+```{r original-figure-1, fig.width=10, fig.height=7}
+original_header <- make_column_header(
+  labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues",
+             "4. Observed\nbaseline effect", "5. Kelly-Price\nadjusted",
+             "6. Blomqvist\nadjusted", "7. Moments\nadjusted",
+             "8. Slope\ncomparison"),
+  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5))
+)
+
+original_footer <- make_column_header(
+  labels = c("", "timepoint", "timepoint", "initial", "initial",
+             "initial", "initial", "method"),
+  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),
+  base_size = 8,
+  face = "plain",
+  vjust = -0.25
+)
+
+fig1_original_recreated <- cowplot::plot_grid(
+  plotlist = c(
+    list(original_header),
+    scenario_results$result %>% map(make_original_row),
+    list(original_footer)
+  ),
+  labels = c("", scenario_results$scenario, ""),
+  ncol = 1,
+  rel_heights = c(0.25, rep(1, nrow(scenario_results)), 0.08)
+)
+
+fig1_original_recreated
+
+ggsave(
+  filename = "figures/figure1_alternatives/fig1_original_recreated.png",
+  plot = fig1_original_recreated,
+  width = 200,
+  height = 140,
+  units = "mm",
+  bg = "white"
+)
+```
+
+# Alternative 1: Original Without Adjusted Relationship Panels
+
+This version is exactly the submitted Figure 1 structure except that the three
+separate adjusted baseline-change columns are removed. It keeps the observed
+baseline-change relationship and the slope comparison.
+
+```{r alternative-drop-adjusted-panels, fig.width=8, fig.height=7}
+drop_adjusted_header <- make_column_header(
+  labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues",
+             "4. Observed\nbaseline effect", "5. Slope\ncomparison"),
+  rel_widths = c(0.6, 0.6, 0.6, 0.67, 0.67),
+  base_size = 10
+)
+
+drop_adjusted_footer <- make_column_header(
+  labels = c("", "timepoint", "timepoint", "initial", "method"),
+  rel_widths = c(0.6, 0.6, 0.6, 0.67, 0.67),
+  base_size = 8,
+  face = "plain",
+  vjust = -0.25
+)
+
+fig1_alt_drop_adjusted_panels <- cowplot::plot_grid(
+  plotlist = c(
+    list(drop_adjusted_header),
+    scenario_results$result %>% map(make_original_drop_adjusted_row),
+    list(drop_adjusted_footer)
+  ),
+  labels = c("", scenario_results$scenario, ""),
+  ncol = 1,
+  rel_heights = c(0.25, rep(1, nrow(scenario_results)), 0.08)
+)
+
+fig1_alt_drop_adjusted_panels
+
+ggsave(
+  filename = "figures/figure1_alternatives/fig1_alt_drop_adjusted_panels.png",
+  plot = fig1_alt_drop_adjusted_panels,
+  width = 150,
+  height = 140,
+  units = "mm",
+  bg = "white"
+)
+```
+
+# Alternative 2: Reviewer-Minimal
+
+This version follows the reviewer's suggestion most directly. It removes the
+four baseline-change correction panels and relies on the slope comparison for
+the correction result.
+
+```{r alternative-reviewer-minimal, fig.width=7, fig.height=7}
+minimal_header <- make_column_header(
+  labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues",
+             "4. Slope\ncomparison"),
+  rel_widths = c(0.5, 0.5, 0.5, 0.85)
+)
+
+minimal_footer <- make_column_header(
+  labels = c("", "timepoint", "timepoint", "method"),
+  rel_widths = c(0.5, 0.5, 0.5, 0.85),
+  base_size = 8,
+  face = "plain",
+  vjust = -0.25
+)
+
+fig1_alt_reviewer_minimal <- cowplot::plot_grid(
+  plotlist = c(
+    list(minimal_header),
+    scenario_results$result %>% map(make_reviewer_minimal_row),
+    list(minimal_footer)
+  ),
+  labels = c("", scenario_results$scenario, ""),
+  ncol = 1,
+  rel_heights = c(0.25, rep(1, nrow(scenario_results)), 0.08)
+)
+
+fig1_alt_reviewer_minimal
+
+ggsave(
+  filename = "figures/figure1_alternatives/fig1_alt_reviewer_minimal.png",
+  plot = fig1_alt_reviewer_minimal,
+  width = 115,
+  height = 140,
+  units = "mm",
+  bg = "white"
+)
+```
+
+# Alternative 3: Compact Overlay
+
+This version keeps one baseline-change panel per row. The observed points are
+shown once, and fitted lines for each method are overlaid. This preserves the
+visual intuition of baseline-change relationships while avoiding repeated point
+clouds.
+
+```{r alternative-compact-overlay, fig.width=8, fig.height=7}
+overlay_header <- make_column_header(
+  labels = c("1. Param.", "2. True", "3. Observed",
+             "4. Baseline-change", "5. Slopes"),
+  rel_widths = c(0.5, 0.5, 0.5, 0.78, 0.78),
+  base_size = 9
+)
+
+overlay_footer <- make_column_header(
+  labels = c("", "timepoint", "timepoint", "initial", "method"),
+  rel_widths = c(0.5, 0.5, 0.5, 0.78, 0.78),
+  base_size = 7,
+  face = "plain",
+  vjust = -0.25
+)
+
+fig1_alt_overlay_body <- cowplot::plot_grid(
+  plotlist = c(
+    list(overlay_header),
+    scenario_results$result %>% map(make_overlay_row),
+    list(overlay_footer)
+  ),
+  labels = c("", scenario_results$scenario, ""),
+  ncol = 1,
+  rel_heights = c(0.18, rep(1, nrow(scenario_results)), 0.08),
+  label_size = 12
+)
+
+fig1_alt_overlay <- fig1_alt_overlay_body
+
+fig1_alt_overlay
+
+ggsave(
+  filename = "figures/figure1_alternatives/fig1_alt_overlay.png",
+  plot = fig1_alt_overlay,
+  width = 115,
+  height = 135,
+  units = "mm",
+  bg = "white"
+)
+```
+
+# Notes
+
+Candidate tradeoffs:
+
+1. `fig1_alt_drop_adjusted_panels.png`: closest to the submitted layout, but
+   removes the three adjusted baseline-change panels.
+2. `fig1_alt_reviewer_minimal.png`: closest to the reviewer's recommendation,
+   but loses the baseline-change visual argument.
+3. `fig1_alt_overlay.png`: most compact while still showing how the correction
+   methods alter the baseline-change slope.
+
+If one of these becomes the manuscript Figure 1, the omitted panels from the
+submitted figure can be moved into a supplemental figure generated from the
+`fig1_original_recreated` object.
