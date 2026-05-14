@@ -53,6 +53,20 @@ library(ggtext)
 ```{r functions, echo = FALSE}
 # Define helper functions
 
+txt_small_pt <- 6
+txt_med_pt <- 8
+txt_large_pt <- 10
+txt_small_mm <- 2.1
+
+fmt_p <- function(p) {
+  dplyr::case_when(
+    is.na(p) ~ "p = NA",
+    p < 0.001 ~ "p < .001",
+    p < 0.10 ~ paste0("p = ", sub("^0", "", sprintf("%.3f", p))),
+    TRUE ~ paste0("p = ", sub("^0", "", sprintf("%.2f", p)))
+  )
+}
+
 # Function to correct for spurious slopes, from Kelly and Price 2005
 rttm.adj <- function(m1, m2){
   raw.growth<-m2-m1
@@ -168,8 +182,7 @@ StatVarTest <- ggproto("StatVarTest", Stat,
     vtest <- method(data$x, data$y)
 
     # Create label
-    label <- paste0(#"v_i:v_f = ", signif(vtest$estimate, 3),
-                    "p = ", signif(vtest$p.value, 3))
+    label <- fmt_p(vtest$p.value)
     
 
     # Determine label position
@@ -218,15 +231,18 @@ chiolero_plot <- function(df, init_var, final_var,
     geom_point(size = 1.4, alpha = 0.25) +
     geom_point(aes(x = x2, y = y2), size = 1.4, alpha = 0.25) +
     stat_var_test(mapping = ggplot2::aes(x = !!init_sym, y = !!final_sym, group = 1),
-                   label.x = 1.5, label.y = Inf, hjust = 0.5, vjust = 1, size = 2) +
+                   label.x = 1.5, label.y = Inf, hjust = 0.5, vjust = 0.45, size = txt_small_mm) +
     scale_x_continuous(breaks = c(1, 2), labels = c(init_name, final_name),
                        expand = c(0.15, 0.15)) +
     scale_y_continuous(limits = c(-m, m),
                        breaks = major_y, minor_breaks = minor_y) +
+    coord_cartesian(clip = "off") +
     labs(x = "timepoint", y = "value") +
-    theme_minimal(base_size = 10) +
+    theme_minimal(base_size = txt_med_pt) +
     theme(
       panel.grid.minor.y = element_line(),             # show minor gridlines (1-unit)
+      axis.text = element_text(size = txt_small_pt),
+      axis.title = element_text(size = txt_med_pt),
       axis.title.y = element_text(margin = margin(r = -2)),
       plot.margin = margin(4, 4, 4, 4)
     )
@@ -241,8 +257,10 @@ panel_plot_row7 <- function(plots) {
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
     labs(title = NULL, x = NULL, y = "value") +
-    ggplot2::theme_minimal(base_size = 8) +
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt) +
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)),
           panel.grid.minor.x = element_blank()) +
     scale_y_continuous(limits =c(-5, 5), breaks = seq(-4, 4, 2), expand = c(0,0))
@@ -252,40 +270,52 @@ panel_plot_row7 <- function(plots) {
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
     labs(title = NULL, x = NULL, y = "value") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)),
           panel.grid.minor.x = element_blank()) +
     scale_y_continuous(limits =c(-5, 5), breaks = seq(-4, 4, 2), expand = c(0,0))
   
   p3 <- plots[[6]] +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p4 <- plots[[7]] +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p5 <- plots[[8]] +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p6 <- plots[[9]] +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)))
   
   p7 <- plots[[10]] +
     labs(title = NULL, x = NULL, y = "slope") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = -2)),
           axis.text.x = element_text(angle = 45)) +
     coord_cartesian(ylim = c(-0.61, 0.61), clip = "off")
@@ -309,7 +339,7 @@ panel_plot_row7 <- function(plots) {
         parse = TRUE,            # <-- key: parse plotmath
         hjust = 0.5, vjust = 0.5,
         lineheight = 1.05, fontface = "bold",
-        size = base_size * 0.35
+        size = txt_small_mm
       ) +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
       theme_void(base_size = base_size) +
@@ -318,7 +348,7 @@ panel_plot_row7 <- function(plots) {
   
   myPlots <- cowplot::plot_grid(text_panel(b, v_ind, v_err, base_size = 8),
                                 p1, p2, p3, p4, p5, p6, p7, ncol = 8, align = "h",
-                                rel_widths = c(0.6, 0.6, 0.6, 1, 1, 1, 1, 1))
+                                rel_widths = c(0.50, 0.65, 0.65, 1, 1, 1, 1, 1))
   return(myPlots)
 }
 
@@ -346,7 +376,7 @@ text_panel_html <- function(line1,
       aes(0.5, 0.5, label = label),
       hjust = hjust, vjust = vjust,
       lineheight = lineheight,
-      size = base_size * 0.35,
+      size = txt_small_mm,
       fill = NA, label.color = NA
     ) +
     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
@@ -381,7 +411,7 @@ text_panel_math <- function(line1,
       aes(x, y, label = lab),
       parse = TRUE,
       hjust = hjust, vjust = 0.5,
-      size = base_size * 0.35,
+      size = txt_small_mm,
       lineheight = 2
     ) +
     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
@@ -532,18 +562,19 @@ annotate(
   x = 1.5, y = Inf,
   label = paste0("s[2]/s[1]==", round(theta, 2)),
   parse = TRUE,
-  hjust = 0.5, vjust = 2, size = 2
+  hjust = 0.5, vjust = 1.45, size = txt_small_mm
 )
     
 
   p3 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_final_true)) +
     ggplot2::geom_point(alpha = 0.2) +
     ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 1) +
+    ggpubr::stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     ggplot2::geom_smooth(method = "lm", se = FALSE) +
     ggplot2::coord_cartesian(xlim = c(-max_abs_initfinal, max_abs_initfinal),
-                             ylim = c(-max_abs_initfinal, max_abs_initfinal)) +
+                             ylim = c(-max_abs_initfinal, max_abs_initfinal),
+                             clip = "off") +
     ggtitle("True")
 
   p4 <- p3 + ggplot2::aes(x = log_init_obs, y = log_final_obs) + ggtitle("Observed")
@@ -551,11 +582,12 @@ annotate(
   p5 <- ggplot2::ggplot(df1, ggplot2::aes(x = log_init_true, y = log_change_true)) +
     ggplot2::geom_point(alpha = 0.2) +
     ggplot2::geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
-    ggpubr::stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 1) +
+    ggpubr::stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 0, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     ggplot2::geom_smooth(method = "lm", se = FALSE) +
     ggplot2::coord_cartesian(xlim = c(-max_abs_initchange, max_abs_initchange),
-                         ylim = c(-max_abs_initchange, max_abs_initchange)) +
+                         ylim = c(-max_abs_initchange, max_abs_initchange),
+                         clip = "off") +
     ggtitle("True")
 
   p6 <- p5 + ggplot2::aes(x = log_init_obs, y = log_change_obs) + ggtitle("Observed")
@@ -731,7 +763,7 @@ p7
 make_column_header <- function(
   labels = paste("Col", 1:8),
   rel_widths = rep(1, length(labels)),
-  base_size = 10,
+  base_size = txt_med_pt,
   face = "bold",
   hjust = 0.5, vjust = 0.5
 ) {
@@ -751,14 +783,14 @@ make_column_header <- function(
 header <- make_column_header(
   labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues", 
              "4. Observed\nbaseline effect", "5. Kelly–Price\nadjusted", "6. Blomqvist\nadjusted", "7. Moments\nadjusted", "8. Slope\ncomparison"),
-  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),      # <-  SAME rel_widths used for each row
-  base_size = 10
+  rel_widths = c(0.50, 0.65, 0.65, rep(1, 5)),      # <-  SAME rel_widths used for each row
+  base_size = txt_med_pt
 )
 
 footer <- make_column_header(
   labels = c("", " timepoint", " timepoint", "initial", "initial", "initial", "initial", " method"),
-  rel_widths = c(0.6, 0.6, 0.6, rep(1, 5)),
-  base_size = 8, face = "plain", vjust = -0.25
+  rel_widths = c(0.50, 0.65, 0.65, rep(1, 5)),
+  base_size = txt_small_pt, face = "plain", vjust = -0.25
 )
 
 fig1 <- cowplot::plot_grid(
@@ -766,12 +798,13 @@ fig1 <- cowplot::plot_grid(
   p1, p2, p4, p5,              # four 7-panel rows
   footer,
   labels = c("", "A", "B", "C", "D", ""),
+  label_size = txt_large_pt,
   ncol = 1,
   rel_heights = c(0.25, 1, 1, 1, 1, 0.02)  # give the header some breathing room
 )
 fig1
 
-ggsave(filename = "figures/fig1.png", width = 200, height = 140, units = "mm", bg = "white")
+ggsave(filename = "figures/fig1.png", width = 17, height = 11.9, units = "cm", bg = "white")
 ```
 
 * When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). Blomqvist gets it right.
@@ -970,7 +1003,14 @@ ggplot(results_long, aes(
     y = "Slope error (estimate - true)",
     color = "Method"
   ) +
-  theme_minimal(base_size = 12) +
+  theme_minimal(base_size = txt_med_pt) +
+  theme(
+    axis.text = element_text(size = txt_small_pt),
+    axis.title = element_text(size = txt_med_pt),
+    legend.text = element_text(size = txt_small_pt),
+    legend.title = element_text(size = txt_med_pt),
+    strip.text = element_text(size = txt_small_pt)
+  ) +
   scale_x_continuous(
     labels = lab_sig1, expand = c(0.015, 0.015),
     sec.axis = sec_axis(~ .,
@@ -984,7 +1024,7 @@ ggplot(results_long, aes(
                         breaks = NULL, labels = NULL,)
   )
 
-ggsave(filename = "figures/fig2.png", width = 160, height = 120, units = "mm", bg = "white")
+ggsave(filename = "figures/fig2_revised.png", width = 12, height = 9, units = "cm", bg = "white")
 
 
 ```
@@ -1203,72 +1243,84 @@ pdam_chiolero_plot <- chiolero_plot(pdam, log_init_obs, log_final_obs) +
                        labels = c("initial", "final"),
                        expand = expansion(mult = c(0.15, 0.2))) +
     labs(title = NULL, x = NULL, y = "log S/H") +
-    ggplot2::theme_minimal(base_size = 8) +
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt) +
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 1))) +
   annotate(
   "text",
   x = 1.5, y = Inf,
   label = paste0("s[2]/s[1]==", round(pdam_theta, 2)),
   parse = TRUE,
-  hjust = 0.5, vjust = 2, size = 2
+  hjust = 0.5, vjust = 1.45, size = txt_small_mm
 )
 pdam_initfinal_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_trait[1], pdam_trait[2])) +
+    coord_cartesian(xlim = c(pdam_trait[1], pdam_trait[2]), ylim = c(pdam_trait[1], pdam_trait[2]), clip = "off") +
     ggtitle("Observed")
 pdam_initchange_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_obs)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
     coord_cartesian(xlim = c(-3.2, -1.0), 
-                    ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+                    ylim = c(pdam_change[1], pdam_change[2]+0.1), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 pdam_kp_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_kp_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 pdam_blomq_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 pdam_mom_plot <- ggplot(pdam, aes(x = log_init_obs, y = log_change_mom_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = -2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1)) +
+    coord_cartesian(xlim = c(-3.2, -1.0), ylim = c(pdam_change[1], pdam_change[2]+0.1), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 pdam_slopes_plot <- ggplot(pdam_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
     labs(title = NULL, x = NULL, y = "slope") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)),
           axis.text.x = element_text(angle = 45, margin = margin(0,0,0,0,"mm"))) +
   coord_cartesian(ylim = c(-1.2, 0.2))
@@ -1287,7 +1339,7 @@ pdam_plots <- cowplot::plot_grid(
   pdam_chiolero_plot, pdam_initchange_plot,
   pdam_kp_plot, pdam_blomq_plot, pdam_mom_plot, pdam_slopes_plot, 
   nrow = 1, align = "h",
-  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1))
+  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1))
 pdam_plots
 ```
 
@@ -1432,71 +1484,83 @@ mill_chiolero_plot <- chiolero_plot(mill, log_init_obs, log_final_obs) +
                        labels = c("initial", "final"),
                        expand = c(0.1, 0.1)) +
     labs(title = NULL, x = NULL, y = "log size (cm)") +
-    ggplot2::theme_minimal(base_size = 8) +
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt) +
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 1))) +
   annotate(
   "text",
   x = 1.5, y = Inf,
   label = paste0("s[2]/s[1]==", round(mill_theta, 2)),
   parse = TRUE,
-  hjust = 0.5, vjust = 2, size = 2
+  hjust = 0.5, vjust = 1.45, size = txt_small_mm
 )
 mill_initfinal_plot <- ggplot(mill, aes(x = log_init_obs, y = log_final_obs)) +
     geom_point(alpha = 0.2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_trait[1], mill_trait[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_trait[1], mill_trait[2]), clip = "off") +
     ggtitle("Observed")
 mill_initchange_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_obs)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2]), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 mill_kp_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_kp_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2]), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 mill_blomq_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_blomq_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2]), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 mill_mom_plot <- ggplot(mill, aes(x = log_init_obs, y = log_change_mom_adj)) +
     geom_point(alpha = 0.2) +
-    stat_cor(aes(label = ..p.label..), size = 2,
-                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 1) +
+    stat_cor(aes(label = after_stat(fmt_p(p))), size = txt_small_mm, parse = FALSE, output.type = "text",
+                     label.x = 2.25, label.y = Inf, hjust = 0.5, vjust = 0.45) +
     geom_smooth(method = "lm", se = FALSE) +
-    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2])) +
+    coord_cartesian(xlim = c(mill_trait[1], mill_trait[2]), ylim = c(mill_change[1], mill_change[2]), clip = "off") +
     labs(title = NULL, x = NULL, y = "change") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)))
 mill_slopes_plot <- ggplot(mill_slopes_tbl, aes(x = method, y = estimate)) +
   geom_point() +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.05) +
     labs(title = NULL, x = NULL, y = "slope") +
-    ggplot2::theme_minimal(base_size = 8)+
-    theme(plot.margin = margin(1,0,1,0),
+    ggplot2::theme_minimal(base_size = txt_med_pt)+
+    theme(plot.margin = margin(5,0,1,0),
+          axis.text = element_text(size = txt_small_pt),
+          axis.title = element_text(size = txt_small_pt),
           axis.title.y = element_text(margin = margin(r = 0)),
           axis.text.x = element_text(angle = 45, margin = margin(0,0,0,0,"mm")))
 
@@ -1514,7 +1578,7 @@ mill_plots <- cowplot::plot_grid(
   mill_chiolero_plot, mill_initchange_plot,
   mill_kp_plot, mill_blomq_plot, mill_mom_plot, mill_slopes_plot, 
   nrow = 1, align = "h",
-  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1))
+  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1))
 
 mill_plots
 
@@ -1526,7 +1590,7 @@ mill_plots
 make_column_header <- function(
   labels = paste("Col", 1:5),
   rel_widths = rep(1, length(labels)),
-  base_size = 10,
+  base_size = txt_med_pt,
   face = "bold",
   hjust = 0.5, vjust = 0.5
 ) {
@@ -1545,23 +1609,22 @@ make_column_header <- function(
 header <- make_column_header(
   labels = c("1. Dataset       \n ", "2. Observed\nvalues", "3. Observed\nbaseline effect", "4. Kelly-Price\nadjusted", 
              "5. Blomqvist\nadjusted", "6. Moments\nadjusted", "7. Slope\ncomparison"),
-  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),      # <- SAME rel_widths used for each row
-  base_size = 10
+  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1),      # <- SAME rel_widths used for each row
+  base_size = txt_med_pt
 )
 footer <- make_column_header(
   labels = c("", "timepoint", "initial", "initial", "initial", "initial", " method"),
-  rel_widths = c(1, 0.6, 1, 1, 1, 1, 1),
-  base_size = 8, face = "plain", vjust = -0.2
+  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1),
+  base_size = txt_small_pt, face = "plain", vjust = -0.2
 )
 
 fig3 <- cowplot::plot_grid(
   header, pdam_plots, mill_plots, footer, align = "hv", 
   ncol = 1, labels = c("", "A", "B", ""),
+  label_size = txt_large_pt,
   rel_heights = c(0.25, 1, 1, 0.02)  
 )
 fig3
 
-ggsave(filename = "figures/fig3.png", width = 200, height = 80, units = "mm", bg = "white")
+ggsave(filename = "figures/fig3.png", width = 17, height = 6.8, units = "cm", bg = "white")
 ```
-
-
