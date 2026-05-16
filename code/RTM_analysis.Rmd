@@ -920,15 +920,18 @@ param_grid <- param_grid %>%
   dplyr::mutate(seed = sample.int(1e6, size = dplyr::n(), replace = FALSE))
 
 
-# Apply function to each grid row (in parallel)
-plan(multisession)
-results_grid <- future_pmap_dfr(
-  param_grid,
-  evaluate_methods,
-  .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
-)
-saveRDS(results_grid, file = "results_grid.rds")
-# results_grid <- readRDS("results_grid.rds")
+if (file.exists("results_grid.rds")) {
+  results_grid <- readRDS("results_grid.rds")
+} else {
+  # Apply function to each grid row (in parallel)
+  plan(multisession)
+  results_grid <- future_pmap_dfr(
+    param_grid,
+    evaluate_methods,
+    .options = furrr_options(seed = TRUE, packages = c("boot", "broom"))
+  )
+  saveRDS(results_grid, file = "results_grid.rds")
+}
 
 
 # Pivot bias to long format for plotting
@@ -975,33 +978,56 @@ facet_labeller <- function(labels) {
 
 lab_sig1 <- function(x) formatC(signif(x, 1), digits = 1, format = "fg")
 
+method_labels <- c(
+  obs_bias_mean = "Observed",
+  kp_bias_mean = "Kelly-Price",
+  mom_bias_mean = "Moments",
+  blomq_bias_mean = "Blomqvist"
+)
 
-ggplot(results_long, aes(
+method_shapes <- c(
+  obs_bias_mean = 16,
+  kp_bias_mean = 17,
+  mom_bias_mean = 15,
+  blomq_bias_mean = 18
+)
+
+results_long <- results_long %>%
+  mutate(method = factor(
+    method,
+    levels = c("obs_bias_mean", "kp_bias_mean", "mom_bias_mean", "blomq_bias_mean")
+  )) %>%
+  arrange(method)
+
+fig2 <- ggplot(results_long, aes(
   x = b_true,
   y = pmax(pmin(error, 0.75), -0.75),
   color = method,
-  group = method,
-  shape = factor(ifelse(error > 0.75, 2, ifelse(error < -0.75, 6, 16)))
+  shape = method,
+  group = method
 )) +
-  geom_line(linewidth = 0.5, alpha = 0.6) +
-  geom_errorbar(aes(ymin = error - sd, ymax = error + sd), width = 0.05, alpha = 0.6) +
-  geom_point(size = 1.5, alpha = 0.6) +
-  scale_shape_manual(values = c("2" = 2, "6" = 6, "16" = 16), guide = "none") +
-  scale_color_discrete(
-    labels = c(
-      obs_bias_mean = "Observed",
-      blomq_bias_mean = "Blomqvist",
-      kp_bias_mean = "Kelly-Price",
-      mom_bias_mean = "Moments"
-    )
+  geom_hline(yintercept = 0, linetype = "dashed",
+             color = "black", linewidth = 0.35, alpha = 0.55) +
+  geom_line(position = position_dodge(width = 0.05), linewidth = 0.5, alpha = 0.55) +
+  geom_errorbar(aes(ymin = error - sd, ymax = error + sd),
+                position = position_dodge(width = 0.05), width = 0.04, alpha = 0.25) +
+  geom_point(position = position_dodge(width = 0.05), size = 1.5, alpha = 0.55) +
+  scale_shape_manual(
+    values = method_shapes,
+    breaks = names(method_labels),
+    labels = method_labels
   ) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_discrete(
+    breaks = names(method_labels),
+    labels = method_labels
+  ) +
   facet_grid(v_ind ~ k, labeller = facet_labeller) +
   coord_cartesian(ylim = c(-0.75, 0.75)) + #c(-0.6, 0.6)) +
   labs(
     x = "True slope of change vs. initial",
     y = "Slope error (estimate - true)",
-    color = "Method"
+    color = "Method",
+    shape = "Method"
   ) +
   theme_minimal(base_size = txt_med_pt) +
   theme(
@@ -1024,7 +1050,9 @@ ggplot(results_long, aes(
                         breaks = NULL, labels = NULL,)
   )
 
-ggsave(filename = "figures/fig2_revised.png", width = 12, height = 9, units = "cm", bg = "white")
+fig2
+
+ggsave(filename = "figures/fig2.png", plot = fig2, width = 12, height = 9, units = "cm", bg = "white")
 
 
 ```
