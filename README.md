@@ -40,9 +40,10 @@ several approaches for estimating or correcting those relationships.
 
 | File | Description |
 |---|---|
-| `figures/fig2.png` | Simulation examples showing how true slope, change heterogeneity, and measurement error affect observed and corrected baseline-change relationships |
-| `figures/fig3.png` | Bias map comparing slope estimators across measurement-error levels and change heterogeneity |
-| `figures/fig4.png` | Empirical tests of regression-to-the-mean corrections in the two coral case studies |
+| `figures/fig1.pdf` | Conceptual framework for baseline-change analyses and regression-to-the-mean correction |
+| `figures/fig2.png` | Canonical simulation scenarios illustrating regression to the mean and corrections |
+| `figures/fig3.png` | Bias of change vs. initial slope estimators across measurement error and change heterogeneity |
+| `figures/fig4.png` | Evaluating symbiont population size and individual growth dependence on initial values using empirical datasets |
 
 ## Software
 
