@@ -23,6 +23,7 @@ several approaches for estimating or correcting those relationships.
 | File | Description |
 |---|---|
 | `code/RTM_analysis.Rmd` | Canonical analysis notebook for simulations, empirical analyses, and manuscript figure generation; defines the helper functions used directly in the main analysis |
+| `code/RTM_analysis.html` | Rendered HTML output of `code/RTM_analysis.Rmd`, included for viewing the full analysis without rerunning the notebook |
 | `code/acer_variance.R` | Calculates measurement-error variance for the *A. cervicornis* case study; this value is carried into `RTM_analysis.Rmd` as `mill_v_err_abs` |
 | `code/pdam_variance.R` | Calculates repeatability and measurement-error estimates for the *P. damicornis* case study; the resulting Blomqvist error ratio is carried into `RTM_analysis.Rmd` as `pdam_k` |
 | `code/RTM_functions.R` | Stand-alone functions for the Blomqvist and no-heterogeneity method-of-moments estimators described in the Supplementary Text, provided to help users easily apply these methods to their own two-timepoint baseline-change datasets; included as companion utility code rather than as a direct step in the main analysis pipeline |
