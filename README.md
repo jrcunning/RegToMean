@@ -1,5 +1,7 @@
 # Correcting Regression to the Mean
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21829601.svg)](https://doi.org/10.5281/zenodo.21829601)
+
 This repository contains the code, data, and generated figures for the
 manuscript "Failure to distinguish between measurement error and change
 heterogeneity leads to improper correction of regression-to-the-mean artifacts,"
@@ -49,3 +51,7 @@ several approaches for estimating or correcting those relationships.
 ## Software
 
 Analyses were run in R 4.3.1 with the following package versions: `tidyverse` 2.0.0, `ggpubr` 0.6.0, `ggpmisc` 0.6.1, `broom` 1.0.4, `patchwork` 1.3.0, `boot` 1.3-28.1, `future` 1.33.0, `furrr` 0.3.1, `ggtext` 0.1.2, `rptR` 0.9.23, `rmarkdown` 2.25, and `knitr` 1.45.
+
+## Archive
+
+This repository is archived on Zenodo at [https://doi.org/10.5281/zenodo.21829601](https://doi.org/10.5281/zenodo.21829601).
