@@ -15,7 +15,5 @@ millsumm <- as.tibble(dat2) %>%
 
 var(millsumm$diff) / 2   # 0.01301945
 # use as numerator to compute Blomqvist k
-# denominator mill_var_x_abs is variance of initial measurements from growth study
-(var(millsumm$diff) / 2) / mill_var_x_abs      # k = 0.0166
-
-
+# denominator mill_var_x_abs is variance of initial measurements from growth study (see RTM_analysis.Rmd)
+# (var(millsumm$diff) / 2) / mill_var_x_abs      # k = 0.0166
