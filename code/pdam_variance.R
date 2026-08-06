@@ -9,8 +9,9 @@ library(rptR)
 # Load time-series dataset
 pdam_warm <- read_csv("data/PdamRwarming.csv") %>%
   mutate(colony = factor(colony),
+         time = match(date, c("feb", "apr", "jun")),
          logtotal = log(total)) %>%
-  select(colony, sym, time, date, total, logtotal)
+  select(colony, sym, date, time, total, logtotal)
 
 # Calculate colony Repeatability (R) and Blomqvist's k (1 - R)
 set.seed(1234)
@@ -22,5 +23,4 @@ summary(res)
 1-summary(res)$boot[[1]]$Median
 # Median residual variance across bootstraps
 summary(res)$boot[[2]]$Median   # 1 - R = Blomqvist's k = 0.4648801
-
 
