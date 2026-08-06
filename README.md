@@ -40,9 +40,9 @@ several approaches for estimating or correcting those relationships.
 
 | File | Description |
 |---|---|
-| `figures/fig1.png` | Simulation examples showing how true slope, change heterogeneity, and measurement error affect observed and corrected baseline-change relationships |
-| `figures/fig2.png` | Bias map comparing slope estimators across measurement-error levels and change heterogeneity |
-| `figures/fig3.png` | Empirical tests of regression-to-the-mean corrections in the two coral case studies |
+| `figures/fig2.png` | Simulation examples showing how true slope, change heterogeneity, and measurement error affect observed and corrected baseline-change relationships |
+| `figures/fig3.png` | Bias map comparing slope estimators across measurement-error levels and change heterogeneity |
+| `figures/fig4.png` | Empirical tests of regression-to-the-mean corrections in the two coral case studies |
 
 ## Software
 

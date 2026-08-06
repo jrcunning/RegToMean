@@ -756,8 +756,8 @@ p7
 ```
 
 
-```{r fig1}
-# Combine four scenarios into Figure 1
+```{r fig2}
+# Combine four scenarios into Figure 2
 
 # Make a column-label header row (7 labels by default)
 make_column_header <- function(
@@ -793,7 +793,7 @@ footer <- make_column_header(
   base_size = txt_small_pt, face = "plain", vjust = -0.25
 )
 
-fig1 <- cowplot::plot_grid(
+fig2 <- cowplot::plot_grid(
   header,
   p1, p2, p4, p5,              # four 7-panel rows
   footer,
@@ -802,9 +802,9 @@ fig1 <- cowplot::plot_grid(
   ncol = 1,
   rel_heights = c(0.25, 1, 1, 1, 1, 0.02)  # give the header some breathing room
 )
-fig1
+fig2
 
-ggsave(filename = "figures/fig1.png", width = 17, height = 11.9, units = "cm", bg = "white")
+ggsave(filename = "figures/fig2.png", width = 17, height = 11.9, units = "cm", bg = "white")
 ```
 
 * When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). Blomqvist gets it right.
@@ -999,7 +999,7 @@ results_long <- results_long %>%
   )) %>%
   arrange(method)
 
-fig2 <- ggplot(results_long, aes(
+fig3 <- ggplot(results_long, aes(
   x = b_true,
   y = pmax(pmin(error, 0.75), -0.75),
   color = method,
@@ -1050,16 +1050,16 @@ fig2 <- ggplot(results_long, aes(
                         breaks = NULL, labels = NULL,)
   )
 
-fig2
+fig3
 
-ggsave(filename = "figures/fig2.png", plot = fig2, width = 12, height = 9, units = "cm", bg = "white")
+ggsave(filename = "figures/fig3.png", plot = fig3, width = 12, height = 9, units = "cm", bg = "white")
 
 
 ```
 
 
 ```{r}
-# Alternate version of Figure 2 that shows slopes instead of slope biases
+# Alternate version of Figure 3 that shows slopes instead of slope biases
 
 # Pivot estimators to long format for plotting
 results_long2 <- results_grid %>%
@@ -1108,7 +1108,7 @@ ggplot(results_long2, aes(x = b_true, y = estimate, color = method, shape = meth
   labs(x = "True slope", y = "Estimated slope", fill = "Method") +
   coord_fixed(xlim = c(-0.9, 0.9), ylim = c(-0.9, 0.9), expand = 0)
 
-#ggsave(filename = "figures/fig2alt.png", width = 160, height = 120, units = "mm", bg = "white")
+#ggsave(filename = "figures/fig3alt.png", width = 160, height = 120, units = "mm", bg = "white")
 ```
 
 * Observed relationships are highly susceptible to spurious negative overestimation, which worsens as measurement error increases.
@@ -1612,7 +1612,7 @@ mill_plots
 
 ```
 
-# Figure 3
+# Figure 4
 ```{r}
 # Make a column-label header row (7 labels by default)
 make_column_header <- function(
@@ -1646,13 +1646,13 @@ footer <- make_column_header(
   base_size = txt_small_pt, face = "plain", vjust = -0.2
 )
 
-fig3 <- cowplot::plot_grid(
+fig4 <- cowplot::plot_grid(
   header, pdam_plots, mill_plots, footer, align = "hv", 
   ncol = 1, labels = c("", "A", "B", ""),
   label_size = txt_large_pt,
   rel_heights = c(0.25, 1, 1, 0.02)  
 )
-fig3
+fig4
 
-ggsave(filename = "figures/fig3.png", width = 17, height = 6.8, units = "cm", bg = "white")
+ggsave(filename = "figures/fig4.png", width = 17, height = 6.8, units = "cm", bg = "white")
 ```
