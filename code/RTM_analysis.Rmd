@@ -757,54 +757,320 @@ p7
 
 
 ```{r fig2}
-# Combine four scenarios into Figure 2
+# Combine four scenarios into Figure 2.
 
-# Make a column-label header row (7 labels by default)
-make_column_header <- function(
-  labels = paste("Col", 1:8),
-  rel_widths = rep(1, length(labels)),
-  base_size = txt_med_pt,
-  face = "bold",
-  hjust = 0.5, vjust = 0.5
-) {
-  heads <- lapply(labels, function(lab) {
+fig2_small_pt <- 7
+fig2_med_pt <- 9
+fig2_large_pt <- 10
+fig2_small_mm <- fig2_small_pt / ggplot2::.pt
+fig2_base_family <- ""
+fig2_axis_text_x_inset <- margin(t = -3)
+fig2_axis_text_y_inset <- margin(r = -3)
+
+fig2_fmt_number <- function(x) {
+  out <- formatC(x, format = "fg", digits = 3)
+  sub("^-0$", "0", out)
+}
+
+fig2_fmt_p_expr <- function(p) {
+  if (is.na(p)) return("italic(p) == 'NA'")
+  if (p < 0.001) return("italic(p) < '.001'")
+  if (p < 0.10) {
+    return(paste0("italic(p) == '", sub("^0", "", sprintf("%.3f", p)), "'"))
+  }
+  paste0("italic(p) == '", sub("^0", "", sprintf("%.2f", p)), "'")
+}
+
+fig2_fmt_ratio_expr <- function(theta) {
+  paste0("italic(s)[2]/italic(s)[1] == '", round(theta, 2), "'")
+}
+
+fig2_theme <- function(show_x = TRUE, show_y = TRUE, preserve_y_space = FALSE) {
+  theme_minimal(base_size = fig2_small_pt, base_family = fig2_base_family) +
+    theme(
+      text = element_text(color = "black"),
+      axis.text = element_text(size = fig2_small_pt, color = "black"),
+      axis.title = element_text(size = fig2_small_pt, color = "black"),
+      axis.title.y = element_text(margin = margin(r = -1)),
+      axis.ticks = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_blank(),
+      plot.margin = margin(3, 0.5, 3, 0.5)
+    ) +
+    theme(
+      axis.text.x = if (show_x) {
+        element_text(size = fig2_small_pt, color = "black", margin = fig2_axis_text_x_inset)
+      } else {
+        element_blank()
+      },
+      axis.text.y = if (show_y) {
+        element_text(size = fig2_small_pt, color = "black", margin = fig2_axis_text_y_inset)
+      } else if (preserve_y_space) {
+        element_text(size = fig2_small_pt, color = "transparent", margin = fig2_axis_text_y_inset)
+      } else {
+        element_blank()
+      },
+      axis.title.y = if (show_y) {
+        element_text(size = fig2_small_pt, color = "black", margin = margin(r = -1))
+      } else if (preserve_y_space) {
+        element_text(size = fig2_small_pt, color = "transparent", margin = margin(r = -1))
+      } else {
+        element_blank()
+      }
+    )
+}
+
+fig2_timepoint_panel <- function(df, init_col, final_col, show_x, show_y,
+                                 show_ratio = FALSE, preserve_y_space = FALSE) {
+  d <- df %>%
+    mutate(.row = row_number())
+
+  set.seed(123)
+  jitter <- runif(nrow(d), -0.08, 0.08)
+  d <- d %>%
+    mutate(
+      x1 = 1 + jitter,
+      x2 = 2 + jitter,
+      y1 = .data[[init_col]],
+      y2 = .data[[final_col]]
+    )
+
+  p_val <- var.test(d$y1, d$y2)$p.value
+  p_label <- fig2_fmt_p_expr(p_val)
+  ratio_label <- NULL
+  if (show_ratio) {
+    theta <- sd(d$y2) / sd(d$y1)
+    ratio_label <- fig2_fmt_ratio_expr(theta)
+  }
+
+  p <- ggplot(d, aes(x = x1, y = y1)) +
+    geom_segment(aes(xend = x2, yend = y2), alpha = 0.12, linewidth = 0.18) +
+    geom_point(size = 1.0, alpha = 0.25) +
+    geom_point(aes(x = x2, y = y2), size = 1.0, alpha = 0.25) +
+    annotate(
+      "text",
+      x = 1.5, y = 4.82, label = p_label, parse = TRUE,
+      hjust = 0.5, vjust = 0.5,
+      size = fig2_small_mm, family = fig2_base_family
+    ) +
+    scale_x_continuous(
+      breaks = c(1, 2), labels = c("initial", "final"),
+      expand = expansion(mult = c(0.18, 0.18))
+    ) +
+    scale_y_continuous(
+      limits = c(-5, 5), breaks = c(-4, 0, 4),
+      minor_breaks = NULL, expand = c(0, 0)
+    ) +
+    coord_cartesian(clip = "off") +
+    labs(x = NULL, y = if (show_y || preserve_y_space) "value" else NULL) +
+    fig2_theme(show_x = show_x, show_y = show_y, preserve_y_space = preserve_y_space)
+
+  if (show_ratio) {
+    p <- p +
+      annotate(
+        "text",
+        x = 1.5, y = 3.82, label = ratio_label, parse = TRUE,
+        hjust = 0.5, vjust = 0.5,
+        size = fig2_small_mm, family = fig2_base_family
+      )
+  }
+
+  p
+}
+
+fig2_change_panel <- function(df, y_col, x_lim, y_lim, show_x, show_y, preserve_y_space = FALSE) {
+  y <- df[[y_col]]
+  p_val <- cor.test(df$log_init_obs, y)$p.value
+
+  ggplot(df, aes(x = log_init_obs, y = .data[[y_col]])) +
+    geom_point(size = 1.25, alpha = 0.22) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.35) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 0.65, color = "#2f67ff") +
+    annotate(
+      "text",
+      x = 0, y = Inf, label = fig2_fmt_p_expr(p_val), parse = TRUE,
+      hjust = 0.5, vjust = 1.05, size = fig2_small_mm,
+      family = fig2_base_family
+    ) +
+    scale_x_continuous(breaks = c(-3, 0, 3), minor_breaks = NULL) +
+    scale_y_continuous(breaks = c(-3, 0, 3), minor_breaks = NULL) +
+    coord_cartesian(xlim = x_lim, ylim = y_lim, clip = "off") +
+    labs(x = NULL, y = if (show_y || preserve_y_space) "change" else NULL) +
+    fig2_theme(show_x = show_x, show_y = show_y, preserve_y_space = preserve_y_space)
+}
+
+fig2_slope_panel <- function(slopes, true_b, show_x) {
+  plot_slopes <- slopes %>%
+    mutate(
+      method = factor(
+        c("Obs.", "K.\u2013P.", "Blom.", "Mom."),
+        levels = c("Obs.", "K.\u2013P.", "Blom.", "Mom.")
+      )
+    )
+
+  ggplot(plot_slopes, aes(x = method, y = estimate)) +
+    geom_hline(yintercept = true_b, linewidth = 0.45, color = "#e41a1c") +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.35) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0, linewidth = 0.35) +
+    geom_point(size = 1.7) +
+    scale_y_continuous(breaks = c(-0.6, 0, 0.6), minor_breaks = NULL) +
+    coord_cartesian(ylim = c(-0.7, 0.7), clip = "off") +
+    labs(x = NULL, y = "slope") +
+    fig2_theme(show_x = show_x, show_y = TRUE) +
+    theme(
+      axis.text.x = if (show_x) {
+        element_text(
+          size = fig2_small_pt, color = "black", angle = 45,
+          hjust = 1, vjust = 1, margin = margin(t = -6)
+        )
+      } else {
+        element_blank()
+      }
+    )
+}
+
+fig2_parameter_panel <- function(true_b, v_ind, v_err) {
+  labels <- c(
+    paste0("italic(b)['true'] == ", fig2_fmt_number(true_b)),
+    paste0("italic(sigma)[Delta]^2 == ", fig2_fmt_number(v_ind)),
+    paste0("italic(sigma)['err']^2 == ", fig2_fmt_number(v_err))
+  )
+
+  tibble(x = 0.5, y = c(0.74, 0.50, 0.26), label = labels) %>%
+    ggplot(aes(x, y, label = label)) +
+    geom_text(parse = TRUE, hjust = 0.5, vjust = 0.5, size = fig2_small_mm, family = fig2_base_family) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
+    theme_void(base_size = fig2_small_pt, base_family = fig2_base_family) +
+    theme(plot.margin = margin(3, 3, 3, 3))
+}
+
+fig2_make_scenario_row <- function(scenario, change_x_lim, change_y_lim, show_x = FALSE) {
+  df <- scenario$result$data
+
+  cowplot::plot_grid(
+    fig2_parameter_panel(scenario$b, scenario$v_ind, scenario$v_err),
+    fig2_timepoint_panel(df, "log_init_true", "log_final_true", show_x = show_x, show_y = TRUE),
+    fig2_timepoint_panel(
+      df, "log_init_obs", "log_final_obs",
+      show_x = show_x, show_y = FALSE, show_ratio = TRUE
+    ),
+    fig2_change_panel(df, "log_change_obs", x_lim = change_x_lim, y_lim = change_y_lim, show_x = show_x, show_y = TRUE),
+    fig2_change_panel(
+      df, "log_change_kp_adj",
+      x_lim = change_x_lim, y_lim = change_y_lim,
+      show_x = show_x, show_y = FALSE
+    ),
+    fig2_change_panel(
+      df, "log_change_blomq_adj",
+      x_lim = change_x_lim, y_lim = change_y_lim,
+      show_x = show_x, show_y = FALSE
+    ),
+    fig2_change_panel(
+      df, "log_change_mom_adj",
+      x_lim = change_x_lim, y_lim = change_y_lim,
+      show_x = show_x, show_y = FALSE
+    ),
+    fig2_slope_panel(scenario$result$slopes, scenario$b, show_x = show_x),
+    nrow = 1,
+    align = "h",
+    rel_widths = fig2_rel_widths
+  )
+}
+
+fig2_make_column_header <- function(labels, rel_widths, size = fig2_med_pt, vjust = 0.5, y = 0.5) {
+  heads <- lapply(labels, function(label) {
     cowplot::ggdraw() +
       cowplot::draw_label(
-        lab, x = 0.6, y = 0.5,
-        hjust = hjust, vjust = vjust,
-        fontface = face, size = base_size
+        label,
+        x = 0.5, y = y, hjust = 0.5, vjust = vjust,
+        size = size, fontface = "plain", fontfamily = fig2_base_family
       )
   })
   cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
 }
 
-# combine header + 4 rows
-# (Set rel_widths to match each row of 7 panels)
-header <- make_column_header(
-  labels = c("1. Param-\neters", "2. True\nvalues", "3. Observed\nvalues", 
-             "4. Observed\nbaseline effect", "5. Kelly–Price\nadjusted", "6. Blomqvist\nadjusted", "7. Moments\nadjusted", "8. Slope\ncomparison"),
-  rel_widths = c(0.50, 0.65, 0.65, rep(1, 5)),      # <-  SAME rel_widths used for each row
-  base_size = txt_med_pt
+fig2_extend_limits <- function(base, observed, step = 0.25, pad = 0.02) {
+  c(
+    if (observed[1] < base[1]) floor((observed[1] - pad) / step) * step else base[1],
+    if (observed[2] > base[2]) ceiling((observed[2] + pad) / step) * step else base[2]
+  )
+}
+
+fig2_tight_limits <- function(observed, step = 0.05, pad = 0.02) {
+  c(
+    floor((observed[1] - pad) / step) * step,
+    ceiling((observed[2] + pad) / step) * step
+  )
+}
+
+fig2_scenarios <- list(
+  list(result = s1.1_results, b = 0, v_ind = 0, v_err = 0.5),
+  list(result = s1.2_results, b = 0, v_ind = 1, v_err = 0),
+  list(result = s2.2_results, b = -0.3, v_ind = 0, v_err = 0.5),
+  list(result = s2.3_results, b = -0.3, v_ind = 1, v_err = 0)
 )
 
-footer <- make_column_header(
-  labels = c("", " timepoint", " timepoint", "initial", "initial", "initial", "initial", " method"),
-  rel_widths = c(0.50, 0.65, 0.65, rep(1, 5)),
-  base_size = txt_small_pt, face = "plain", vjust = -0.25
+fig2_change_y_cols <- c(
+  "log_change_obs", "log_change_kp_adj",
+  "log_change_blomq_adj", "log_change_mom_adj"
 )
+fig2_change_x_range <- range(
+  unlist(lapply(fig2_scenarios, function(scenario) scenario$result$data$log_init_obs)),
+  na.rm = TRUE
+)
+fig2_change_y_range <- range(
+  unlist(lapply(fig2_scenarios, function(scenario) scenario$result$data[fig2_change_y_cols])),
+  na.rm = TRUE
+)
+fig2_change_x_lim <- fig2_tight_limits(fig2_change_x_range)
+fig2_change_y_lim <- fig2_extend_limits(c(-3, 3), fig2_change_y_range)
+
+fig2_rel_widths <- c(0.78, 0.82, 0.68, 0.88, 0.74, 0.74, 0.74, 0.88)
+
+fig2_header <- fig2_make_column_header(
+  labels = c(
+    "1. Parameters", "2. True\nvalues", "3. Observed\nvalues",
+    "4. Observed\nbaseline effect", "5. Kelly-Price\nadjusted",
+    "6. Blomqvist\nadjusted", "7. Moments\nadjusted",
+    "8. Slope\ncomparison"
+  ),
+  rel_widths = fig2_rel_widths,
+  size = fig2_med_pt
+)
+
+fig2_footer <- fig2_make_column_header(
+  labels = c("", "timepoint", "timepoint", "initial value", "initial value",
+             "initial value", "initial value", "method"),
+  rel_widths = fig2_rel_widths,
+  size = fig2_small_pt,
+  vjust = 0.65,
+  y = 0.82
+)
+
+fig2_rows <- purrr::imap(fig2_scenarios, function(scenario, i) {
+  fig2_make_scenario_row(
+    scenario,
+    change_x_lim = fig2_change_x_lim,
+    change_y_lim = fig2_change_y_lim,
+    show_x = i == length(fig2_scenarios)
+  )
+})
 
 fig2 <- cowplot::plot_grid(
-  header,
-  p1, p2, p4, p5,              # four 7-panel rows
-  footer,
+  fig2_header,
+  fig2_rows[[1]], fig2_rows[[2]], fig2_rows[[3]], fig2_rows[[4]],
+  fig2_footer,
   labels = c("", "A", "B", "C", "D", ""),
-  label_size = txt_large_pt,
+  label_size = fig2_large_pt,
+  label_fontface = "plain",
+  label_fontfamily = fig2_base_family,
   ncol = 1,
-  rel_heights = c(0.25, 1, 1, 1, 1, 0.02)  # give the header some breathing room
+  rel_heights = c(0.34, 1, 1, 1, 1, 0.18)
 )
 fig2
 
-ggsave(filename = "figures/fig2.png", width = 17, height = 11.9, units = "cm", bg = "white")
+ggsave(filename = "figures/fig2.png", plot = fig2, width = 17, height = 13.5,
+       units = "cm", dpi = 600, bg = "white")
 ```
 
 * When both individual variance and measurement error contribute equally, observed relationship is overly negative (due to measurement error/RTM) and K-P adjustment is spuriously positive (due to overcorrection because assumes that individual variance is measurement error). Blomqvist gets it right.
@@ -1613,46 +1879,384 @@ mill_plots
 ```
 
 # Figure 4
-```{r}
-# Make a column-label header row (7 labels by default)
-make_column_header <- function(
-  labels = paste("Col", 1:5),
-  rel_widths = rep(1, length(labels)),
-  base_size = txt_med_pt,
-  face = "bold",
-  hjust = 0.5, vjust = 0.5
-) {
-  heads <- lapply(labels, function(lab) {
+```{r fig4}
+# Combine the empirical datasets into Figure 4 with the same layout treatment as Figure 2.
+
+fig4_small_pt <- 7
+fig4_med_pt <- 9
+fig4_large_pt <- 10
+fig4_small_mm <- fig4_small_pt / ggplot2::.pt
+fig4_base_family <- ""
+fig4_axis_text_x_inset <- margin(t = -3)
+fig4_axis_text_y_inset <- margin(r = -3)
+
+fig4_fmt_number <- function(x) {
+  out <- formatC(x, format = "fg", digits = 3)
+  sub("^-0$", "0", out)
+}
+
+fig4_fmt_p_expr <- function(p) {
+  if (is.na(p)) return("italic(p) == 'NA'")
+  if (p < 0.001) return("italic(p) < '.001'")
+  if (p < 0.10) {
+    return(paste0("italic(p) == '", sub("^0", "", sprintf("%.3f", p)), "'"))
+  }
+  paste0("italic(p) == '", sub("^0", "", sprintf("%.2f", p)), "'")
+}
+
+fig4_fmt_ratio_expr <- function(theta) {
+  paste0("italic(s)[2]/italic(s)[1] == '", round(theta, 2), "'")
+}
+
+fig4_theme <- function(show_x = TRUE, show_y = TRUE) {
+  theme_minimal(base_size = fig4_small_pt, base_family = fig4_base_family) +
+    theme(
+      text = element_text(color = "black"),
+      axis.text = element_text(size = fig4_small_pt, color = "black"),
+      axis.title = element_text(size = fig4_small_pt, color = "black"),
+      axis.title.y = element_text(margin = margin(r = -1)),
+      axis.ticks = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_blank(),
+      plot.margin = margin(3, 0.5, 3, 0.5)
+    ) +
+    theme(
+      axis.text.x = if (show_x) {
+        element_text(size = fig4_small_pt, color = "black", margin = fig4_axis_text_x_inset)
+      } else {
+        element_blank()
+      },
+      axis.text.y = if (show_y) {
+        element_text(size = fig4_small_pt, color = "black", margin = fig4_axis_text_y_inset)
+      } else {
+        element_blank()
+      },
+      axis.title.y = if (show_y) {
+        element_text(size = fig4_small_pt, color = "black", margin = margin(r = -1))
+      } else {
+        element_blank()
+      }
+    )
+}
+
+fig4_pretty_breaks <- function(lim, n = 3) {
+  breaks <- pretty(lim, n = n)
+  breaks <- breaks[breaks >= lim[1] & breaks <= lim[2]]
+  if (length(breaks) > 3) {
+    breaks <- breaks[round(seq(1, length(breaks), length.out = 3))]
+  }
+  breaks
+}
+
+fig4_tight_limits <- function(values, step = 0.05, pad = 0.02, include_zero = FALSE) {
+  observed <- range(values, na.rm = TRUE)
+  if (include_zero) observed <- range(c(observed, 0), na.rm = TRUE)
+  c(
+    floor((observed[1] - pad) / step) * step,
+    ceiling((observed[2] + pad) / step) * step
+  )
+}
+
+fig4_label_limits <- function(values, step = 0.1, lower_pad = 0.02, upper_pad = 0.38) {
+  observed <- range(values, na.rm = TRUE)
+  span <- diff(observed)
+  if (!is.finite(span) || span == 0) span <- 1
+  c(
+    floor((observed[1] - lower_pad * span) / step) * step,
+    ceiling((observed[2] + upper_pad * span) / step) * step
+  )
+}
+
+fig4_timepoint_panel <- function(df, y_lim, y_label, theta, show_x,
+                                 pad_y_tick_labels = FALSE) {
+  d <- df %>%
+    mutate(.row = row_number())
+
+  set.seed(123)
+  jitter <- runif(nrow(d), -0.08, 0.08)
+  d <- d %>%
+    mutate(
+      x1 = 1 + jitter,
+      x2 = 2 + jitter,
+      y1 = log_init_obs,
+      y2 = log_final_obs
+    )
+
+  p_val <- var.test(d$y1, d$y2)$p.value
+
+  ggplot(d, aes(x = x1, y = y1)) +
+    geom_segment(aes(xend = x2, yend = y2), alpha = 0.12, linewidth = 0.18) +
+    geom_point(size = 1.0, alpha = 0.25) +
+    geom_point(aes(x = x2, y = y2), size = 1.0, alpha = 0.25) +
+    annotate(
+      "text",
+      x = 1.5, y = Inf, label = fig4_fmt_p_expr(p_val), parse = TRUE,
+      hjust = 0.5, vjust = 0.85,
+      size = fig4_small_mm, family = fig4_base_family
+    ) +
+    annotate(
+      "text",
+      x = 1.5, y = Inf, label = fig4_fmt_ratio_expr(theta), parse = TRUE,
+      hjust = 0.5, vjust = 1.75,
+      size = fig4_small_mm, family = fig4_base_family
+    ) +
+    scale_x_continuous(
+      breaks = c(1, 2), labels = c("initial", "final"),
+      expand = expansion(mult = c(0.18, 0.18))
+    ) +
+    scale_y_continuous(
+      limits = y_lim,
+      breaks = fig4_pretty_breaks(y_lim),
+      labels = if (pad_y_tick_labels) {
+        function(x) {
+          parse(text = ifelse(
+            x >= 0,
+            paste0("phantom('-')*", format(x, trim = TRUE)),
+            format(x, trim = TRUE)
+          ))
+        }
+      } else {
+        ggplot2::waiver()
+      },
+      minor_breaks = NULL,
+      expand = c(0, 0)
+    ) +
+    coord_cartesian(clip = "off") +
+    labs(x = NULL, y = y_label) +
+    fig4_theme(show_x = show_x, show_y = TRUE)
+}
+
+fig4_change_panel <- function(df, y_col, x_lim, y_lim, show_x, show_y) {
+  y <- df[[y_col]]
+  p_val <- cor.test(df$log_init_obs, y)$p.value
+
+  ggplot(df, aes(x = log_init_obs, y = .data[[y_col]])) +
+    geom_point(size = 1.25, alpha = 0.22) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 0.65, color = "#2f67ff") +
+    annotate(
+      "text",
+      x = mean(x_lim), y = Inf, label = fig4_fmt_p_expr(p_val), parse = TRUE,
+      hjust = 0.5, vjust = 1.05, size = fig4_small_mm,
+      family = fig4_base_family
+    ) +
+    scale_x_continuous(breaks = fig4_pretty_breaks(x_lim), minor_breaks = NULL) +
+    scale_y_continuous(breaks = fig4_pretty_breaks(y_lim), minor_breaks = NULL) +
+    coord_cartesian(xlim = x_lim, ylim = y_lim, clip = "off") +
+    labs(x = NULL, y = if (show_y) "change" else NULL) +
+    fig4_theme(show_x = show_x, show_y = show_y)
+}
+
+fig4_slope_panel <- function(slopes, y_lim, show_x) {
+  plot_slopes <- slopes %>%
+    mutate(
+      method = factor(
+        c("Obs.", "K.\u2013P.", "Blom.", "Mom."),
+        levels = c("Obs.", "K.\u2013P.", "Blom.", "Mom.")
+      )
+    )
+
+  ggplot(plot_slopes, aes(x = method, y = estimate)) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.35) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0, linewidth = 0.35) +
+    geom_point(size = 1.7) +
+    scale_y_continuous(breaks = fig4_pretty_breaks(y_lim), minor_breaks = NULL) +
+    coord_cartesian(ylim = y_lim, clip = "on") +
+    labs(x = NULL, y = "slope") +
+    fig4_theme(show_x = show_x, show_y = TRUE) +
+    theme(
+      axis.text.x = if (show_x) {
+        element_text(
+          size = fig4_small_pt, color = "black", angle = 45,
+          hjust = 1, vjust = 1, margin = margin(t = -6)
+        )
+      } else {
+        element_blank()
+      }
+    )
+}
+
+fig4_dataset_panel <- function(line1, genus, species, n, v_pop, v_ind, v_err) {
+  labels <- c(
+    paste0("'", line1, "'"),
+    paste0("italic(", genus, ")"),
+    paste0("italic(", species, ")"),
+    paste0("italic(n) == ", formatC(n, format = "fg")),
+    paste0("italic(s)[X]^2 == ", fig4_fmt_number(v_pop)),
+    paste0("italic(s)[Delta]^2 == ", fig4_fmt_number(v_ind)),
+    paste0("italic(s)['err']^2 == ", fig4_fmt_number(v_err))
+  )
+
+  tibble(x = 0.5, y = c(0.94, 0.82, 0.70, 0.46, 0.31, 0.16, 0.02), label = labels) %>%
+    ggplot(aes(x, y, label = label)) +
+    geom_text(parse = TRUE, hjust = 0.5, vjust = 0.5, size = fig4_small_mm, family = fig4_base_family) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE, clip = "off") +
+    theme_void(base_size = fig4_small_pt, base_family = fig4_base_family) +
+    theme(plot.margin = margin(3, 3, 3, 3))
+}
+
+fig4_make_dataset_row <- function(dataset, show_x = FALSE) {
+  df <- dataset$data
+  show_change_x <- show_x || isTRUE(dataset$show_change_x_ticks)
+
+  cowplot::plot_grid(
+    fig4_dataset_panel(
+      line1 = dataset$line1,
+      genus = dataset$genus,
+      species = dataset$species,
+      n = nrow(df),
+      v_pop = dataset$v_pop,
+      v_ind = dataset$v_ind,
+      v_err = dataset$v_err
+    ),
+    fig4_timepoint_panel(
+      df,
+      y_lim = dataset$time_y_lim,
+      y_label = dataset$time_y_label,
+      theta = dataset$theta,
+      show_x = show_x,
+      pad_y_tick_labels = isTRUE(dataset$pad_time_y_tick_labels)
+    ),
+    fig4_change_panel(
+      df, "log_change_obs",
+      x_lim = dataset$change_x_lim,
+      y_lim = dataset$change_y_lim,
+      show_x = show_change_x,
+      show_y = TRUE
+    ),
+    fig4_change_panel(
+      df, "log_change_kp_adj",
+      x_lim = dataset$change_x_lim,
+      y_lim = dataset$change_y_lim,
+      show_x = show_change_x,
+      show_y = FALSE
+    ),
+    fig4_change_panel(
+      df, "log_change_blomq_adj",
+      x_lim = dataset$change_x_lim,
+      y_lim = dataset$change_y_lim,
+      show_x = show_change_x,
+      show_y = FALSE
+    ),
+    fig4_change_panel(
+      df, "log_change_mom_adj",
+      x_lim = dataset$change_x_lim,
+      y_lim = dataset$change_y_lim,
+      show_x = show_change_x,
+      show_y = FALSE
+    ),
+    fig4_slope_panel(
+      dataset$slopes,
+      y_lim = dataset$slope_y_lim,
+      show_x = show_x
+    ),
+    nrow = 1,
+    align = "h",
+    rel_widths = fig4_rel_widths
+  )
+}
+
+fig4_make_column_header <- function(labels, rel_widths, size = fig4_med_pt, vjust = 0.5, y = 0.5) {
+  heads <- lapply(labels, function(label) {
     cowplot::ggdraw() +
       cowplot::draw_label(
-        lab, x = 0.6, y = 0.5,
-        hjust = hjust, vjust = vjust,
-        fontface = face, size = base_size
+        label,
+        x = 0.5, y = y, hjust = 0.5, vjust = vjust,
+        size = size, fontface = "plain", fontfamily = fig4_base_family
       )
   })
   cowplot::plot_grid(plotlist = heads, ncol = length(labels), rel_widths = rel_widths)
 }
 
-# (Set rel_widths to match each row of 7 panels)
-header <- make_column_header(
-  labels = c("1. Dataset       \n ", "2. Observed\nvalues", "3. Observed\nbaseline effect", "4. Kelly-Price\nadjusted", 
-             "5. Blomqvist\nadjusted", "6. Moments\nadjusted", "7. Slope\ncomparison"),
-  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1),      # <- SAME rel_widths used for each row
-  base_size = txt_med_pt
-)
-footer <- make_column_header(
-  labels = c("", "timepoint", "initial", "initial", "initial", "initial", " method"),
-  rel_widths = c(1.05, 0.575, 0.975, 1, 1, 1, 1),
-  base_size = txt_small_pt, face = "plain", vjust = -0.2
+fig4_change_y_cols <- c(
+  "log_change_obs", "log_change_kp_adj",
+  "log_change_blomq_adj", "log_change_mom_adj"
 )
 
+fig4_dataset_specs <- list(
+  list(
+    data = pdam,
+    slopes = pdam_slopes_tbl,
+    line1 = "Bleaching in",
+    genus = "Pocillopora",
+    species = "damicornis",
+    v_pop = pdam_v_pop,
+    v_ind = pdam_v_ind,
+    v_err = pdam_v_err_abs,
+    theta = pdam_theta,
+    show_change_x_ticks = TRUE,
+    time_y_label = "log S/H",
+    time_y_lim = fig4_label_limits(
+      c(pdam$log_init_obs, pdam$log_final_obs),
+      upper_pad = 0.34
+    ),
+    change_x_lim = fig4_tight_limits(pdam$log_init_obs),
+    change_y_lim = fig4_tight_limits(
+      unlist(pdam[fig4_change_y_cols]),
+      include_zero = TRUE
+    ) + c(0, 0.15),
+    slope_y_lim = c(-1.35, 0.25)
+  ),
+  list(
+    data = mill,
+    slopes = mill_slopes_tbl,
+    line1 = "Growth in",
+    genus = "Acropora",
+    species = "cervicornis",
+    v_pop = mill_v_pop,
+    v_ind = mill_v_ind,
+    v_err = mill_v_err_abs,
+    theta = mill_theta,
+    pad_time_y_tick_labels = TRUE,
+    time_y_label = "log size (cm)",
+    time_y_lim = fig4_label_limits(c(mill$log_init_obs, mill$log_final_obs)),
+    change_x_lim = fig4_tight_limits(mill$log_init_obs),
+    change_y_lim = fig4_tight_limits(unlist(mill[fig4_change_y_cols]), include_zero = TRUE),
+    slope_y_lim = c(-0.22, 0.04)
+  )
+)
+
+fig4_rel_widths <- c(0.70, 0.68, 0.88, 0.74, 0.74, 0.74, 0.88)
+
+fig4_header <- fig4_make_column_header(
+  labels = c(
+    "1. Dataset", "2. Observed\nvalues", "3. Observed\nbaseline effect",
+    "4. Kelly-Price\nadjusted", "5. Blomqvist\nadjusted",
+    "6. Moments\nadjusted", "7. Slope\ncomparison"
+  ),
+  rel_widths = fig4_rel_widths,
+  size = fig4_med_pt
+)
+
+fig4_footer <- fig4_make_column_header(
+  labels = c("", "timepoint", "initial value", "initial value",
+             "initial value", "initial value", "method"),
+  rel_widths = fig4_rel_widths,
+  size = fig4_small_pt,
+  vjust = 0.65,
+  y = 0.82
+)
+
+fig4_rows <- purrr::imap(fig4_dataset_specs, function(dataset, i) {
+  fig4_make_dataset_row(
+    dataset,
+    show_x = i == length(fig4_dataset_specs)
+  )
+})
+
 fig4 <- cowplot::plot_grid(
-  header, pdam_plots, mill_plots, footer, align = "hv", 
-  ncol = 1, labels = c("", "A", "B", ""),
-  label_size = txt_large_pt,
-  rel_heights = c(0.25, 1, 1, 0.02)  
+  fig4_header,
+  fig4_rows[[1]], fig4_rows[[2]],
+  fig4_footer,
+  align = "hv",
+  ncol = 1,
+  labels = c("", "A", "B", ""),
+  label_size = fig4_large_pt,
+  label_fontface = "plain",
+  label_fontfamily = fig4_base_family,
+  rel_heights = c(0.34, 1, 1, 0.18)
 )
 fig4
 
-ggsave(filename = "figures/fig4.png", width = 17, height = 6.8, units = "cm", bg = "white")
+ggsave(filename = "figures/fig4.png", plot = fig4, width = 17, height = 7.5,
+       units = "cm", dpi = 600, bg = "white")
 ```
