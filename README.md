@@ -50,7 +50,11 @@ several approaches for estimating or correcting those relationships.
 
 ## Software
 
-Analyses were run in R 4.3.1 with the following package versions: `tidyverse` 2.0.0, `ggpubr` 0.6.0, `ggpmisc` 0.6.1, `broom` 1.0.4, `patchwork` 1.3.0, `boot` 1.3-28.1, `future` 1.33.0, `furrr` 0.3.1, `ggtext` 0.1.2, `rptR` 0.9.23, `rmarkdown` 2.25, and `knitr` 1.45.
+Analyses were run in R 4.3.1 with the following package versions: `tidyverse` 2.0.0, `ggpubr` 0.6.0, `ggpmisc` 0.6.1, `broom` 1.0.4, `patchwork` 1.3.0, `boot` 1.3-28.1, `future` 1.33.0, `furrr` 0.3.1, `ggtext` 0.1.2, `cowplot` 1.1.1, `rptR` 0.9.23, `rmarkdown` 2.25, and `knitr` 1.45.
+
+## Contact
+
+For questions about the manuscript, code, or data, contact Ross Cunning (ross.cunning@gmail.com).
 
 ## Archive
 
